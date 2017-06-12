@@ -40,6 +40,7 @@ public class EventTest extends TestCase
 
     public void testApp()
     {
+     
       {
         event = new Event<String>();
         result = "";

@@ -29,6 +29,8 @@ public class Event <T> {
 			removeListener = listener;
 		}
 
+
+
 		public Mod(Consumer<T> listener, Object owner){
 			addListener = listener;
 			addOwner = owner;
@@ -63,7 +65,7 @@ public class Event <T> {
 		if(listeners.get(owner) == null){
 			listeners.put(owner, new ArrayList<Consumer<T>>());
 		}
-		
+
 		// add to owner collection
 		listeners.get(owner).add(newListener);
 	}
@@ -96,12 +98,12 @@ public class Event <T> {
 		}
 	}
 
-	public void removeListeners(Object owner){ 
+	public void removeListeners(Object owner){
 		if(!isTriggering()){
 			listeners.remove(owner);
 			return;
 		}
-		
+
 		// queue operation if locked
 		Mod m = new Mod(owner);
 		modQueue.add(m);
@@ -147,14 +149,14 @@ public class Event <T> {
 	public boolean isTriggering(){
 		return triggerCount > 0;
 	}
-	
+
 	public int size(){
 		int counter=0;
 		for (Map.Entry<Object, List<Consumer<T>>> pair : listeners.entrySet())
 			counter += pair.getValue().size();
 		return counter;
 	}
-	
+
 	public void forward(Event<T> other){
 		forwardEvents.add(other);
 		other.addListener(this.forwarder, this);
