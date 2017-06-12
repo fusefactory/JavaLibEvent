@@ -29,8 +29,6 @@ public class Event <T> {
 			removeListener = listener;
 		}
 
-
-
 		public Mod(Consumer<T> listener, Object owner){
 			addListener = listener;
 			addOwner = owner;
