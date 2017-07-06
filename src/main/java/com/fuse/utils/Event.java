@@ -7,167 +7,255 @@ import java.util.List;
 import java.util.Iterator;
 import java.util.function.Consumer;
 
+/**
+* @author Mark van de Korput
+*
+* The Event class implements the Observer pattern
+* in a reusable and safe way.
+*/
 public class Event <T> {
-	private Map<Object, List<Consumer<T>>> listeners;
-	private List<Consumer<T>> onceListeners;
-	private int triggerCount;
-	private List<Mod> modQueue;
-	private List<Event<T>> forwardEvents;
-	private Consumer<T> forwarder;
+    /** Holds all the registered listeners, mapped by owner */
+    private Map<Object, List<Consumer<T>>> listeners;
+    /** Holds a list of listeners that should be removed after the next notification */
+    private List<Consumer<T>> onceListeners;
+    /** Holds the number of _currently active_ trigger operations (more than 1 means recursive triggers) */
+    private int triggerCount;
+    /** Holds a list of Mod operations to execute after the event finishes all current notifications */
+    private List<Mod> modQueue;
+    /** Holds a list of events that are currently being forwarded by this event */
+    private List<Event<T>> forwardEvents;
+    /** Holds our listener-logic for forwarding other events */
+    private Consumer<T> forwarder;
 
-	private class Mod {
-		public Consumer<T> addListener;
-		public Object addOwner;
-		public Object removeOwner;
-		public Consumer<T> removeListener;
+    private class Mod {
+        public Consumer<T> addListener;
+        public Object addOwner;
+        public Object removeOwner;
+        public Consumer<T> removeListener;
 
-		public Mod(Object owner){
-			removeOwner = owner;
-		}
+        public Mod(Object owner){
+            removeOwner = owner;
+        }
 
-		public Mod(Consumer<T> listener){
-			removeListener = listener;
-		}
+        public Mod(Consumer<T> listener){
+            removeListener = listener;
+        }
 
-		public Mod(Consumer<T> listener, Object owner){
-			addListener = listener;
-			addOwner = owner;
-		}
-	};
+        public Mod(Consumer<T> listener, Object owner){
+            addListener = listener;
+            addOwner = owner;
+        }
+    };
 
-	public Event() {
-		// initialize empty list of listeners
-		listeners = new IdentityHashMap<Object, List<Consumer<T>>>();
-		modQueue = new ArrayList<Mod>();
-		onceListeners = new ArrayList<Consumer<T>>();
-		triggerCount = 0;
-		forwardEvents = new ArrayList<Event<T>>();
-		forwarder = (T value) -> {
-			this.trigger(value);
-		};
-	}
+    /**
+     * Default constructor.
+     */
+    public Event() {
+        // initialize empty list of listeners
+        listeners = new IdentityHashMap<Object, List<Consumer<T>>>();
+        modQueue = new ArrayList<Mod>();
+        onceListeners = new ArrayList<Consumer<T>>();
+        triggerCount = 0;
+        forwardEvents = new ArrayList<Event<T>>();
+        forwarder = (T value) -> {
+            this.trigger(value);
+        };
+    }
 
-	public void addListener(Consumer<T> newListener){
-		addListener(newListener, null);
-	}
+    /**
+     * Registers a new listener with default null owner.
+     * If this event is currently triggering (thus iterating over its listeners)
+     * the specified listener won't actually be registered until the current
+     * notifications have finished.
+     *
+     * @param newListener reference to the listener that should be registered
+     */
+    public void addListener(Consumer<T> newListener){
+        addListener(newListener, null);
+    }
 
-	public void addListener(Consumer<T> newListener, Object owner){
-		// queue operation if locked
-		if(isTriggering()){
-			Mod m = new Mod(newListener, owner);
-			modQueue.add(m);
-			return;
-		}
+    /**
+     * Register a new listener.
+     * If this event is currently triggering (thus iterating over its listeners)
+     * the specified listener won't actually be registered until the current
+     * notifications have finished.
+     *
+     * @param newListener reference to the listener that should be registered
+     * @param owner owner of the new listener
+     */
+    public void addListener(Consumer<T> newListener, Object owner){
+        // queue operation if locked
+        if(isTriggering()){
+            Mod m = new Mod(newListener, owner);
+            modQueue.add(m);
+            return;
+        }
 
-		// create owner collection if necessary
-		if(listeners.get(owner) == null){
-			listeners.put(owner, new ArrayList<Consumer<T>>());
-		}
+        // create owner collection if necessary
+        if(listeners.get(owner) == null){
+            listeners.put(owner, new ArrayList<Consumer<T>>());
+        }
 
-		// add to owner collection
-		listeners.get(owner).add(newListener);
-	}
+        // add to owner collection
+        listeners.get(owner).add(newListener);
+    }
 
-	public void addOnceListener(Consumer<T> newListener){
-		addOnceListener(newListener, null);
-	}
+    public void addOnceListener(Consumer<T> newListener){
+        addOnceListener(newListener, null);
+    }
 
-	public void addOnceListener(Consumer<T> newListener, Object owner){
-		addListener(newListener, owner);
-		onceListeners.add(newListener);
-	}
+    /**
+     * Add listener that should be called only once (for the first upcoming notification).
+     * The listener is removed immediately after the first notification.
+     * If this event is currently triggering (thus iterating over its listeners)
+     * the specified listener won't actually be registered until the current
+     * notifications have finished.
+     *
+     * @param newListener reference to the listener that should be registered
+     * @param owner owner of the new listener
+     */
+    public void addOnceListener(Consumer<T> newListener, Object owner){
+        addListener(newListener, owner);
+        onceListeners.add(newListener);
+    }
 
-	public void removeListener(Consumer<T> listener){
-		// queue operation if locked
-		if(isTriggering()){
-			Mod m = new Mod(listener);
-			modQueue.add(m);
-			return;
-		}
+    /**
+     * Remove a specific listener by listener reference
+     * If this event is currently triggering (thus iterating over its listeners)
+     * the specified listener won't actually be removed until the current
+     * notifications have finished.
+     *
+     * @param listener reference to the actual listener that should be removed
+     */
+    public void removeListener(Consumer<T> listener){
+        // queue operation if locked
+        if(isTriggering()){
+            Mod m = new Mod(listener);
+            modQueue.add(m);
+            return;
+        }
 
-		// find listener
-		for (Map.Entry<Object, List<Consumer<T>>> pair : listeners.entrySet()){
-			Iterator<Consumer<T>> it = pair.getValue().iterator();
+        // find listener
+        for (Map.Entry<Object, List<Consumer<T>>> pair : listeners.entrySet()){
+            Iterator<Consumer<T>> it = pair.getValue().iterator();
             while (it.hasNext()) {
-            	if(it.next() == listener)
-                	// remove it
-            		it.remove();
+                if(it.next() == listener)
+                // remove it
+                it.remove();
             }
-		}
-	}
+        }
+    }
 
-	public void removeListeners(Object owner){
-		if(!isTriggering()){
-			listeners.remove(owner);
-			return;
-		}
+    /**
+     * Remove all listeners that were registered with the specified owner.
+     * If this event is currently triggering (thus iterating over its listeners)
+     * the specified listeners won't actually be removed until the current
+     * notifications have finished.
+     *
+     * @param owner owner of the listeners that should be removed
+     */
+    public void removeListeners(Object owner){
+        if(!isTriggering()){
+            listeners.remove(owner);
+            return;
+        }
 
-		// queue operation if locked
-		Mod m = new Mod(owner);
-		modQueue.add(m);
-	}
+        // queue operation if locked
+        Mod m = new Mod(owner);
+        modQueue.add(m);
+    }
 
-	public void trigger(T arg){
-		// count the number of (recursive) triggers
-		triggerCount++;
+    /**
+     * Start notification of all registered listeners iwth the given payload
+     *
+     * @param arg the payload to give to all listeners
+     */
+    public void trigger(T arg){
+        // count the number of (recursive) triggers
+        triggerCount++;
 
-		// call each listener
-		for (Map.Entry<Object, List<Consumer<T>>> pair : listeners.entrySet()){
-			for(Consumer<T> consumer : pair.getValue()){
-				//System.out.println(e.getKey() + ": " + e.getValue());
-				consumer.accept(arg);
-			}
-		}
+        // call each listener
+        for (Map.Entry<Object, List<Consumer<T>>> pair : listeners.entrySet()){
+            for(Consumer<T> consumer : pair.getValue()){
+                //System.out.println(e.getKey() + ": " + e.getValue());
+                consumer.accept(arg);
+            }
+        }
 
-		// remove all the listeners that should only be called once
-		for(Consumer<T> listener : onceListeners){
-			removeListener(listener); // also removes from onceListeners
-		}
+        // remove all the listeners that should only be called once
+        for(Consumer<T> listener : onceListeners){
+            removeListener(listener); // also removes from onceListeners
+        }
 
-		// this trigger is done, "uncount" it
-		triggerCount--;
+        // this trigger is done, "uncount" it
+        triggerCount--;
 
-		// currently still in the process of triggering the event?
-		if(isTriggering())
-			return;
+        // currently still in the process of triggering the event?
+        if(isTriggering())
+        return;
 
-		for(Mod m : modQueue){
-			if(m.removeListener != null)
-				removeListener(m.removeListener);
-			if(m.removeOwner != null)
-				removeListeners(m.removeOwner);
-			if(m.addListener != null)
-				addListener(m.addListener, m.addOwner);
-		}
+        for(Mod m : modQueue){
+            if(m.removeListener != null)
+            removeListener(m.removeListener);
+            if(m.removeOwner != null)
+            removeListeners(m.removeOwner);
+            if(m.addListener != null)
+            addListener(m.addListener, m.addOwner);
+        }
 
-		// clear queue
-		modQueue.clear();
-	}
+        // clear queue
+        modQueue.clear();
+    }
 
-	public boolean isTriggering(){
-		return triggerCount > 0;
-	}
+    /**
+     * Returns if the event is currently triggering
+     * (and thus iterating over it's listeners)
+     *
+     * @return boolean
+     */
+    public boolean isTriggering(){
+        return triggerCount > 0;
+    }
 
-	public int size(){
-		int counter=0;
-		for (Map.Entry<Object, List<Consumer<T>>> pair : listeners.entrySet())
-			counter += pair.getValue().size();
-		return counter;
-	}
+    /**
+     * Returns the number of registered listeners
+     *
+     * @return int
+     */
+    public int size(){
+        int counter=0;
+        for (Map.Entry<Object, List<Consumer<T>>> pair : listeners.entrySet())
+        counter += pair.getValue().size();
+        return counter;
+    }
 
-	public void forward(Event<T> other){
-		forwardEvents.add(other);
-		other.addListener(this.forwarder, this);
-	}
+    /**
+     * Registers this event as a listener to the specified event to
+     * forward the specified event's notifications to our own listeners
+     *
+     * @param other source event who's notifications to forward to our own listeners
+     */
+    public void forward(Event<T> other){
+        forwardEvents.add(other);
+        other.addListener(this.forwarder, this);
+    }
 
-	public void stopForwards(){
-		for(Event<T> other : forwardEvents){
-			stopForward(other);
-		}
-	}
+    /**
+     * Stop forwarding all events that were being forwarded using .forward();
+     */
+    public void stopForwards(){
+        for(Event<T> other : forwardEvents){
+            stopForward(other);
+        }
+    }
 
-	public void stopForward(Event<T> other){
-		other.removeListeners(this);
-		this.forwardEvents.remove(other);
-	}
+    /**
+     * Stop forwarding specific event that was being forwarded using .forward();
+     *
+     * @param other source event to stop forwarding
+     */
+    public void stopForward(Event<T> other){
+        other.removeListeners(this);
+        this.forwardEvents.remove(other);
+    }
 }
