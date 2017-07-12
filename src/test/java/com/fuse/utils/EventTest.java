@@ -108,4 +108,12 @@ public class EventTest {
         evt.addListener((Float val) -> {}, this);
         assertEquals(evt.hasOwner(this), true);
     }
+
+    @Test public void hasListener(){
+      Consumer<Float> listner = (Float val) -> {};
+      Event<Float> evt = new Event<>();
+      assertEquals(evt.hasListener(listner), false);
+      evt.addListener(listner);
+      assertEquals(evt.hasListener(listner), true);
+    }
 }

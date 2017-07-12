@@ -266,4 +266,15 @@ public class Event <T> {
     public boolean hasOwner(Object owner){
         return listeners.containsKey(owner);
     }
+
+    /**
+     * @param owner The owner for which to check
+     * @return boolean True if there are any listeners for the specified owner registered
+     */
+    public boolean hasListener(Consumer<T> listener){
+        for(List<Consumer<T>> ownerListeners : listeners.values())
+            if(ownerListeners.contains(listener))
+                return true;
+        return false;
+    }
 }
