@@ -258,4 +258,12 @@ public class Event <T> {
         other.removeListeners(this);
         this.forwardEvents.remove(other);
     }
+
+    /**
+     * @param owner The owner for which to check
+     * @return boolean True if there are any listeners for the specified owner registered
+     */
+    public boolean hasOwner(Object owner){
+        return listeners.containsKey(owner);
+    }
 }

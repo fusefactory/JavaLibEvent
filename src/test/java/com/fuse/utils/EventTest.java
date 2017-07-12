@@ -76,6 +76,7 @@ public class EventTest {
       assertEquals(event.size(), 0);
       assertEquals(result, "trigger2 -> trigger4 # trigger6 _ trigger8 (after add: 1, after remove: 1)");
     }
+
     @Test public void forward_stopForward(){
         Event<String> e1 = new Event<String>();
         Event<String> e2 = new Event<String>();
@@ -99,5 +100,12 @@ public class EventTest {
         e2.stopForward(e1);
         e1.trigger("trigger4");
         assertEquals(result, "trigger2trigger3");
+    }
+
+    @Test public void hasOwner(){
+        Event<Float> evt = new Event<>();
+        assertEquals(evt.hasOwner(this), false);
+        evt.addListener((Float val) -> {}, this);
+        assertEquals(evt.hasOwner(this), true);
     }
 }
