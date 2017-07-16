@@ -284,7 +284,10 @@ public class Event <T> {
         return false;
     }
 
-    /** @return List<T> The recorded history of triggered values */
+    /**
+     * Returns the recorded list of values that have been triggered before
+     * @return List The recorded history of triggered values
+     */
     public List<T> getHistory(){
         return history;
     }
@@ -294,7 +297,10 @@ public class Event <T> {
         enableHistory(true);
     }
 
-    /** @param enable When true; enables history recording, otherwise it disables history recording */
+    /**
+     * Enables history recording
+     * @param enable When true; enables history recording, otherwise it disables history recording
+     */
     public void enableHistory(boolean enable){
         // disable
         if(!enable){
@@ -307,10 +313,19 @@ public class Event <T> {
             history = new ArrayList<>();
     }
 
+    /**
+     * Returns true if this event is currently recording it history (false by default)
+     * @return boolean The current history-recording status
+     */
     public boolean isHistoryEnabled(){
         return history != null;
     }
 
+    /**
+     * Runs the given logic for all values that are recorded into the internal history (if enabled)
+     * and also registers the logic like a "normal" listener.
+     * @param func The Listener which should also be invoked for all history values
+     */
     public void withAllValues(Consumer<T> func){
         addListener(func);
         enableHistory(true);
