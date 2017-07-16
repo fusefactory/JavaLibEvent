@@ -17,16 +17,17 @@ public class Event <T> {
     /** Holds all the registered listeners, mapped by owner */
     private Map<Object, List<Consumer<T>>> listeners;
     /** Holds a list of listeners that should be removed after the next notification */
-    private List<Consumer<T>> onceListeners;
+    private List<Consumer<T>> onceListeners = null;
     /** Holds the number of _currently active_ trigger operations (more than 1 means recursive triggers) */
-    private int triggerCount;
+    private int triggerCount = 0;
     /** Holds a list of Mod operations to execute after the event finishes all current notifications */
-    private List<Mod> modQueue;
+    private List<Mod> modQueue = null;
     /** Holds a list of events that are currently being forwarded by this event */
-    private List<Event<T>> forwardEvents;
+    private List<Event<T>> forwardEvents = null;
     /** Holds our listener-logic for forwarding other events */
-    private Consumer<T> forwarder;
-    private List<T> history;
+    private Consumer<T> forwarder = null;
+    /** List into which all triggered values are recorded (when enabled) */
+    private List<T> history = null;
 
     private class Mod {
         public Consumer<T> addListener;
@@ -54,13 +55,6 @@ public class Event <T> {
     public Event() {
         // initialize empty list of listeners
         listeners = new IdentityHashMap<Object, List<Consumer<T>>>();
-        modQueue = new ArrayList<Mod>();
-        onceListeners = new ArrayList<Consumer<T>>();
-        triggerCount = 0;
-        forwardEvents = new ArrayList<Event<T>>();
-        forwarder = (T value) -> {
-            this.trigger(value);
-        };
     }
 
     /**
@@ -87,8 +81,7 @@ public class Event <T> {
     public void addListener(Consumer<T> newListener, Object owner){
         // queue operation if locked
         if(isTriggering()){
-            Mod m = new Mod(newListener, owner);
-            modQueue.add(m);
+            queueMod(new Mod(newListener, owner));
             return;
         }
 
@@ -117,7 +110,21 @@ public class Event <T> {
      */
     public void addOnceListener(Consumer<T> newListener, Object owner){
         addListener(newListener, owner);
+
+        if(onceListeners == null)
+            onceListeners = new ArrayList<Consumer<T>>();
         onceListeners.add(newListener);
+    }
+
+    private void removeOnceListener(Consumer<T> func){
+        if(onceListeners == null)
+            return;
+
+        if(onceListeners.contains(func))
+            onceListeners.remove(func);
+
+        if(onceListeners.isEmpty())
+            onceListeners = null;
     }
 
     /**
@@ -131,8 +138,7 @@ public class Event <T> {
     public void removeListener(Consumer<T> listener){
         // queue operation if locked
         if(isTriggering()){
-            Mod m = new Mod(listener);
-            modQueue.add(m);
+            queueMod(new Mod(listener));
             return;
         }
 
@@ -145,6 +151,9 @@ public class Event <T> {
                 it.remove();
             }
         }
+
+        // also remove from onceListeners list
+        removeOnceListener(listener);
     }
 
     /**
@@ -156,14 +165,19 @@ public class Event <T> {
      * @param owner owner of the listeners that should be removed
      */
     public void removeListeners(Object owner){
-        if(!isTriggering()){
-            listeners.remove(owner);
+        // queue operation if locked
+        if(isTriggering()){
+            queueMod(new Mod(owner));
             return;
         }
 
-        // queue operation if locked
-        Mod m = new Mod(owner);
-        modQueue.add(m);
+        // also remove from onceListeners if necessary
+        List<Consumer<T>> ownerListeners = listeners.get(owner);
+        if(ownerListeners != null)
+            for(Consumer<T> func : ownerListeners)
+                removeOnceListener(func);
+
+        listeners.remove(owner);
     }
 
     /**
@@ -188,28 +202,19 @@ public class Event <T> {
             history.add(arg);
 
         // remove all the listeners that should only be called once
-        for(Consumer<T> listener : onceListeners){
-            removeListener(listener); // also removes from onceListeners
+        if(onceListeners != null){
+            for(Consumer<T> listener : onceListeners){
+                // this also removes from onceListeners
+                removeListener(listener);
+            }
         }
 
         // this trigger is done, "uncount" it
         triggerCount--;
 
-        // currently still in the process of triggering the event?
-        if(isTriggering())
-        return;
-
-        for(Mod m : modQueue){
-            if(m.removeListener != null)
-            removeListener(m.removeListener);
-            if(m.removeOwner != null)
-            removeListeners(m.removeOwner);
-            if(m.addListener != null)
-            addListener(m.addListener, m.addOwner);
-        }
-
-        // clear queue
-        modQueue.clear();
+        // no more (recursive) trigger operations active? process mod queue
+        if(!isTriggering())
+            processModQueue();
     }
 
     /**
@@ -241,27 +246,49 @@ public class Event <T> {
      * @param other source event who's notifications to forward to our own listeners
      */
     public void forward(Event<T> other){
+        // we lazily initialize the forwarded (instead of in the constructor),
+        // so it doesn't take up any memory in events that don't use it (which is most events)
+        if(forwarder == null){
+            forwarder = (T value) -> {
+                this.trigger(value);
+            };
+        }
+
+        if(forwardEvents == null){
+            forwardEvents = new ArrayList<Event<T>>();
+        }
+
         forwardEvents.add(other);
-        other.addListener(this.forwarder, this);
+        other.addListener(this.forwarder, forwarder);
     }
 
     /**
      * Stop forwarding all events that were being forwarded using .forward();
      */
     public void stopForwards(){
-        for(Event<T> other : forwardEvents){
+        if(forwardEvents == null)
+            return;
+
+        for(Event<T> other : forwardEvents)
             stopForward(other);
-        }
+
+        forwardEvents = null;
     }
 
     /**
      * Stop forwarding specific event that was being forwarded using .forward();
-     *
      * @param other source event to stop forwarding
      */
     public void stopForward(Event<T> other){
-        other.removeListeners(this);
-        this.forwardEvents.remove(other);
+        other.removeListener(this.forwarder);
+
+        if(forwardEvents == null)
+            return;
+
+        forwardEvents.remove(other);
+
+        if(forwardEvents.isEmpty())
+            forwardEvents = null;
     }
 
     /**
@@ -331,5 +358,29 @@ public class Event <T> {
         enableHistory(true);
         for(T value : history)
             func.accept(value);
+    }
+
+    private void queueMod(Mod mod){
+        if(modQueue == null)
+            modQueue = new ArrayList<Mod>();
+        modQueue.add(mod);
+    }
+
+    private void processModQueue(){
+        if(modQueue == null)
+            return;
+
+        for(Mod m : modQueue){
+            if(m.removeListener != null)
+            removeListener(m.removeListener);
+            if(m.removeOwner != null)
+            removeListeners(m.removeOwner);
+            if(m.addListener != null)
+            addListener(m.addListener, m.addOwner);
+        }
+
+        // clear queue
+        modQueue.clear();
+        modQueue = null;
     }
 }
