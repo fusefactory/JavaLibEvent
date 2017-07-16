@@ -268,7 +268,8 @@ public class Event <T> {
     }
 
     /**
-     * @param owner The owner for which to check
+     * The hasListener method informs the caller if a given Consumer instance is currently registered as listener of this event.
+     * @param listener The owner for which to check
      * @return boolean True if there are any listeners for the specified owner registered
      */
     public boolean hasListener(Consumer<T> listener){
