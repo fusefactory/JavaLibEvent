@@ -26,6 +26,7 @@ public class Event <T> {
     private List<Event<T>> forwardEvents;
     /** Holds our listener-logic for forwarding other events */
     private Consumer<T> forwarder;
+    private List<T> history;
 
     private class Mod {
         public Consumer<T> addListener;
@@ -166,7 +167,7 @@ public class Event <T> {
     }
 
     /**
-     * Start notification of all registered listeners iwth the given payload
+     * Start notification of all registered listeners with the given payload
      *
      * @param arg the payload to give to all listeners
      */
@@ -181,6 +182,10 @@ public class Event <T> {
                 consumer.accept(arg);
             }
         }
+
+        // record history, if enabled
+        if(history != null)
+            history.add(arg);
 
         // remove all the listeners that should only be called once
         for(Consumer<T> listener : onceListeners){
@@ -277,5 +282,39 @@ public class Event <T> {
             if(ownerListeners.contains(listener))
                 return true;
         return false;
+    }
+
+    /** @return List<T> The recorded history of triggered values */
+    public List<T> getHistory(){
+        return history;
+    }
+
+    /** Enables history recording */
+    public void enableHistory(){
+        enableHistory(true);
+    }
+
+    /** @param enable When true; enables history recording, otherwise it disables history recording */
+    public void enableHistory(boolean enable){
+        // disable
+        if(!enable){
+            history = null;
+            return;
+        }
+
+        // enable
+        if(history == null)
+            history = new ArrayList<>();
+    }
+
+    public boolean isHistoryEnabled(){
+        return history != null;
+    }
+
+    public void withAllValues(Consumer<T> func){
+        addListener(func);
+        enableHistory(true);
+        for(T value : history)
+            func.accept(value);
     }
 }
