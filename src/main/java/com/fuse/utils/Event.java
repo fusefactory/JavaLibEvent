@@ -418,7 +418,7 @@ public class Event <T> {
         parameterlessEvent = null;
     }
 
-    /** Removes all callbacks registered using the whenTriggered methods */
+    /** Removes all callbacks registered using the whenTriggered for this specific owner */
     public void stopWhenTriggeredCallbacks(Object owner){
         if(parameterlessEvent == null)
             return; // nothing to remove
