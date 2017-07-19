@@ -169,4 +169,21 @@ public class EventTest {
 		assertEquals((int)numbers.get(1), 202);
 		assertEquals(numbers.size(), 2);
 	}
+
+	@Test public void whenTriggered(){
+		Event<String> evt = new Event<>();
+		List<String> strings = new ArrayList<>();
+
+		evt.whenTriggered(() -> strings.add("callback without arguments!"), this);
+		assertEquals(strings.size(), 0);
+		evt.trigger("with some argument");
+		assertEquals(strings.size(), 1);
+		assertEquals(strings.get(0), "callback without arguments!");
+		evt.trigger("with some other argument");
+		assertEquals(strings.size(), 2);
+		assertEquals(strings.get(1), "callback without arguments!");
+		evt.stopWhenTriggeredCallbacks(this);
+		evt.trigger("with some other argument");
+		assertEquals(strings.size(), 2);
+	}
 }

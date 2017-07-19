@@ -28,6 +28,7 @@ public class Event <T> {
     private Consumer<T> forwarder = null;
     /** List into which all triggered values are recorded (when enabled) */
     private List<T> history = null;
+    private Event<Void> parameterlessEvent = null;
 
     private class Mod {
         public Consumer<T> addListener;
@@ -196,6 +197,10 @@ public class Event <T> {
                 consumer.accept(arg);
             }
         }
+
+        // also trigger "whenTriggered" callbacks without parameters
+        if(parameterlessEvent != null)
+            parameterlessEvent.trigger(null);
 
         // record history, if enabled
         if(history != null)
@@ -382,5 +387,45 @@ public class Event <T> {
         // clear queue
         modQueue.clear();
         modQueue = null;
+    }
+
+    /**
+     * Calls whenTriggered with the given runnable and the default null owner, see whenTriggered(Runnable, Object)
+     * @param func The ownerless callback
+     */
+    public void whenTriggered(Runnable func){
+        whenTriggered(func, null);
+    }
+
+    /**
+     * Register parameter-less callback (Runnable instance) that gets invoked
+     * every time this event is triggered, just like "normal" listeners,
+     * but without parameters
+     * @param func The listener to be invoked every time this even is triggered
+     * @param owner The owner by which this listener can be removed using stopWhenTriggeredCallbacks
+     */
+    public void whenTriggered(Runnable func, Object owner){
+        if(parameterlessEvent == null)
+            parameterlessEvent = new Event<>();
+
+        parameterlessEvent.addListener((Void voi) -> {
+            func.run();
+        }, owner);
+    }
+
+    /** Removes all callbacks registered using the whenTriggered methods */
+    public void stopWhenTriggeredCallbacks(){
+        parameterlessEvent = null;
+    }
+
+    /** Removes all callbacks registered using the whenTriggered methods */
+    public void stopWhenTriggeredCallbacks(Object owner){
+        if(parameterlessEvent == null)
+            return; // nothing to remove
+
+        parameterlessEvent.removeListeners(owner);
+
+        if(parameterlessEvent.size() == 0)
+            parameterlessEvent = null; // cleanup if possible
     }
 }
