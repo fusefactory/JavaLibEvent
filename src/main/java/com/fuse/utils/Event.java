@@ -15,7 +15,7 @@ import java.util.function.Consumer;
 */
 public class Event <T> {
     /** Holds all the registered listeners, mapped by owner */
-    private Map<Object, List<Consumer<T>>> listeners;
+    private Map<Object, List<Consumer<T>>> listeners = null;
     /** Holds a list of listeners that should be removed after the next notification */
     private List<Consumer<T>> onceListeners = null;
     /** Holds the number of _currently active_ trigger operations (more than 1 means recursive triggers) */
@@ -53,10 +53,8 @@ public class Event <T> {
     /**
      * Default constructor.
      */
-    public Event() {
-        // initialize empty list of listeners
-        listeners = new IdentityHashMap<Object, List<Consumer<T>>>();
-    }
+    // public Event() {
+    // }
 
     /**
      * Registers a new listener with default null owner.
@@ -85,6 +83,10 @@ public class Event <T> {
             queueMod(new Mod(newListener, owner));
             return;
         }
+
+        // lazy initializing
+        if(listeners == null)
+            listeners = new IdentityHashMap<>();
 
         // create owner collection if necessary
         if(listeners.get(owner) == null){
@@ -137,6 +139,9 @@ public class Event <T> {
      * @param listener reference to the actual listener that should be removed
      */
     public void removeListener(Consumer<T> listener){
+        if(listeners == null)
+            return; // nothing to remove
+
         // queue operation if locked
         if(isTriggering()){
             queueMod(new Mod(listener));
@@ -166,6 +171,9 @@ public class Event <T> {
      * @param owner owner of the listeners that should be removed
      */
     public void removeListeners(Object owner){
+        if(listeners == null)
+            return; // nothing to remove
+
         // queue operation if locked
         if(isTriggering()){
             queueMod(new Mod(owner));
@@ -190,11 +198,13 @@ public class Event <T> {
         // count the number of (recursive) triggers
         triggerCount++;
 
-        // call each listener
-        for (Map.Entry<Object, List<Consumer<T>>> pair : listeners.entrySet()){
-            for(Consumer<T> consumer : pair.getValue()){
-                //System.out.println(e.getKey() + ": " + e.getValue());
-                consumer.accept(arg);
+        if(listeners != null){
+            // call each listener
+            for (Map.Entry<Object, List<Consumer<T>>> pair : listeners.entrySet()){
+                for(Consumer<T> consumer : pair.getValue()){
+                    //System.out.println(e.getKey() + ": " + e.getValue());
+                    consumer.accept(arg);
+                }
             }
         }
 
@@ -207,7 +217,7 @@ public class Event <T> {
             history.add(arg);
 
         // remove all the listeners that should only be called once
-        if(onceListeners != null){
+        if(onceListeners != null){ // if there's a onceListener, there must be a listener, no need to check listeners != null
             for(Consumer<T> listener : onceListeners){
                 // this also removes from onceListeners
                 removeListener(listener);
@@ -301,7 +311,7 @@ public class Event <T> {
      * @return boolean True if there are any listeners for the specified owner registered
      */
     public boolean hasOwner(Object owner){
-        return listeners.containsKey(owner);
+        return listeners == null ? false : listeners.containsKey(owner);
     }
 
     /**
@@ -310,6 +320,9 @@ public class Event <T> {
      * @return boolean True if there are any listeners for the specified owner registered
      */
     public boolean hasListener(Consumer<T> listener){
+        if(listeners == null)
+            return false;
+
         for(List<Consumer<T>> ownerListeners : listeners.values())
             if(ownerListeners.contains(listener))
                 return true;
