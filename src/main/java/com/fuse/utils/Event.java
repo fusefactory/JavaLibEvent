@@ -50,11 +50,22 @@ public class Event <T> {
         }
     };
 
-    /**
-     * Default constructor.
-     */
     // public Event() {
     // }
+
+    public void destroy(){
+        stopForwards();
+        forwarder = null;
+        enableHistory(false);
+        modQueue = null;
+        if(parameterlessEvent != null){
+            parameterlessEvent.destroy();
+            parameterlessEvent = null;
+        }
+
+        while(listeners != null && !listeners.isEmpty())
+            this.removeListeners(listeners.keySet().toArray()[0]);
+    }
 
     /**
      * Registers a new listener with default null owner.
@@ -440,7 +451,10 @@ public class Event <T> {
 
     /** Removes all callbacks registered using the whenTriggered methods */
     public void stopWhenTriggeredCallbacks(){
-        parameterlessEvent = null;
+        if(parameterlessEvent != null){
+            parameterlessEvent.destroy();
+            parameterlessEvent = null;
+        }
     }
 
     /** Removes all callbacks registered using the whenTriggered for this specific owner */
@@ -450,7 +464,9 @@ public class Event <T> {
 
         parameterlessEvent.removeListeners(owner);
 
-        if(parameterlessEvent.size() == 0)
+        if(parameterlessEvent.size() == 0){
+            parameterlessEvent.destroy();
             parameterlessEvent = null; // cleanup if possible
+        }
     }
 }

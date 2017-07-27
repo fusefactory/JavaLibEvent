@@ -186,4 +186,14 @@ public class EventTest {
 		evt.trigger("with some other argument");
 		assertEquals(strings.size(), 2);
 	}
+
+	@Test public void destroy(){
+		Event<String> event = new Event<>();
+		assertEquals(event.size(), 0);
+		event.addListener((String val) -> {});
+		event.whenTriggered(() -> {});
+		assertEquals(event.size(), 1);
+		event.destroy();
+		assertEquals(event.size(), 0);
+	}
 }
