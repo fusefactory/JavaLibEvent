@@ -149,13 +149,21 @@ public class Event <T> {
         }
 
         // find listener
-        for (Map.Entry<Object, List<Consumer<T>>> pair : listeners.entrySet()){
+        Iterator<Map.Entry<Object, List<Consumer<T>>>> mapIt = listeners.entrySet().iterator();
+        while(mapIt.hasNext()){
+            Map.Entry<Object, List<Consumer<T>>> pair = mapIt.next();
+
             Iterator<Consumer<T>> it = pair.getValue().iterator();
+
             while (it.hasNext()) {
-                if(it.next() == listener)
-                // remove it
-                it.remove();
+                if(it.next() == listener){
+                    // remove it
+                    it.remove();
+                }
             }
+
+            if(pair.getValue().isEmpty())
+                mapIt.remove();
         }
 
         // also remove from onceListeners list
@@ -187,6 +195,9 @@ public class Event <T> {
                 removeOnceListener(func);
 
         listeners.remove(owner);
+
+        if(listeners.isEmpty())
+            listeners = null;
     }
 
     /**
@@ -249,8 +260,9 @@ public class Event <T> {
      */
     public int size(){
         int counter=0;
-        for (Map.Entry<Object, List<Consumer<T>>> pair : listeners.entrySet())
-        counter += pair.getValue().size();
+        if(listeners != null)
+            for (Map.Entry<Object, List<Consumer<T>>> pair : listeners.entrySet())
+                counter += pair.getValue().size();
         return counter;
     }
 
