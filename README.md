@@ -1,4 +1,5 @@
 # JavaLibEvent
+[![Build Status](https://travis-ci.org/fusefactory/JavaLibEvent.svg?branch=master)](https://travis-ci.org/fusefactory/JavaLibEvent)
 
 _Java Package that provides the following high-level classes for implementing Events that invoke lambda-based listeners:_
 
