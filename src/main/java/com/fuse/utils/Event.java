@@ -100,12 +100,15 @@ public class Event <T> {
             listeners = new IdentityHashMap<>();
 
         // create owner collection if necessary
-        if(listeners.get(owner) == null){
-            listeners.put(owner, new ArrayList<Consumer<T>>());
+        List<Consumer<T>> ownerList = listeners.get(owner);
+
+        if(ownerList == null){
+            ownerList = new ArrayList<>();
+            listeners.put(owner, ownerList);
         }
 
         // add to owner collection
-        listeners.get(owner).add(newListener);
+        ownerList.add(newListener);
     }
 
     public void addOnceListener(Consumer<T> newListener){
