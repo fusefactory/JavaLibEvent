@@ -188,10 +188,12 @@ public class EventTest {
 	}
 
 	@Test public void destroy(){
+		Event<String> forwardSource = new Event<>();
 		Event<String> event = new Event<>();
 		assertEquals(event.size(), 0);
 		event.addListener((String val) -> {});
 		event.whenTriggered(() -> {});
+		event.forward(forwardSource);
 		assertEquals(event.size(), 1);
 		event.destroy();
 		assertEquals(event.size(), 0);

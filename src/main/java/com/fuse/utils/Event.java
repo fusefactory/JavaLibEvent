@@ -310,8 +310,9 @@ public class Event <T> {
         if(forwardEvents == null)
             return;
 
-        for(Event<T> other : forwardEvents)
-            stopForward(other);
+        // note; stopForward will set forwardEvents to null if it becomes empty
+        while(forwardEvents != null && !forwardEvents.isEmpty())
+            stopForward(forwardEvents.get(0));
 
         forwardEvents = null;
     }
