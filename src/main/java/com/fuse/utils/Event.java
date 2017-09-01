@@ -1,5 +1,6 @@
 package com.fuse.utils;
 
+import java.util.Set;
 import java.util.Map;
 import java.util.IdentityHashMap;
 import java.util.ArrayList;
@@ -35,6 +36,11 @@ public class Event <T> {
         public Object addOwner;
         public Object removeOwner;
         public Consumer<T> removeListener;
+        public boolean destroy = false;
+
+        public Mod(boolean destroy){
+            this.destroy = destroy;
+        }
 
         public Mod(Object owner){
             removeOwner = owner;
@@ -54,17 +60,31 @@ public class Event <T> {
     // }
 
     public void destroy(){
+        if(isTriggering()){
+            queueMod(new Mod(true)); // destroy mod
+            return;
+        }
+
         stopForwards();
         forwarder = null;
         enableHistory(false);
         modQueue = null;
+
         if(parameterlessEvent != null){
             parameterlessEvent.destroy();
             parameterlessEvent = null;
         }
 
-        while(listeners != null && !listeners.isEmpty())
-            this.removeListeners(listeners.keySet().toArray()[0]);
+        // brute-force these removals
+        if(listeners != null){
+            listeners.clear();
+            listeners = null;
+        }
+
+        if(onceListeners != null){
+            onceListeners.clear();
+            onceListeners = null;
+        }
     }
 
     /**
@@ -224,11 +244,13 @@ public class Event <T> {
         triggerCount++;
 
         if(listeners != null){
-            // call each listener
-            for (Map.Entry<Object, List<Consumer<T>>> pair : listeners.entrySet()){
-                for(Consumer<T> consumer : pair.getValue()){
-                    //System.out.println(e.getKey() + ": " + e.getValue());
-                    consumer.accept(arg);
+            Object[] consumerLists = listeners.values().toArray();
+
+            for(int idx=0; idx<consumerLists.length; idx++){
+                List<Consumer<T>> consumers = (List<Consumer<T>>)consumerLists[idx];
+
+                for(int cIdx=0; cIdx<consumers.size(); cIdx++){
+                    consumers.get(cIdx).accept(arg);
                 }
             }
         }
@@ -415,7 +437,14 @@ public class Event <T> {
         if(modQueue == null)
             return;
 
-        for(Mod m : modQueue){
+        for(int idx=0; idx<modQueue.size(); idx++){
+            Mod m = modQueue.get(idx);
+
+            if(m.destroy){
+                this.destroy();
+                return;
+            }
+
             if(m.removeListener != null)
             removeListener(m.removeListener);
             if(m.removeOwner != null)

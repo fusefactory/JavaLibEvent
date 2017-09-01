@@ -195,7 +195,28 @@ public class EventTest {
 		event.whenTriggered(() -> {});
 		event.forward(forwardSource);
 		assertEquals(event.size(), 1);
+		assertEquals(forwardSource.size(), 1);
 		event.destroy();
 		assertEquals(event.size(), 0);
+		assertEquals(forwardSource.size(), 0);
+	}
+
+	@Test public void destroy_while_iterating(){
+		Event<String> forwardSource = new Event<>();
+		Event<String> event = new Event<>();
+		assertEquals(event.size(), 0);
+		event.addListener((String val) -> {});
+		event.forward(forwardSource);
+		assertEquals(event.size(), 1);
+		assertEquals(forwardSource.size(), 1);
+
+		event.whenTriggered(() -> {
+			event.destroy();
+		});
+
+		event.trigger("foo");
+
+		assertEquals(event.size(), 0);
+		assertEquals(forwardSource.size(), 0);
 	}
 }
