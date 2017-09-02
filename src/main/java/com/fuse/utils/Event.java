@@ -10,6 +10,7 @@ import java.util.function.Consumer;
 
 import com.fuse.utils.extensions.EventExtension;
 import com.fuse.utils.extensions.OnceListener;
+import com.fuse.utils.extensions.EventHistory;
 
 /**
 * @author Mark van de Korput
@@ -30,8 +31,6 @@ public class Event <T> {
     private List<Event<T>> forwardEvents = null;
     /** Holds our listener-logic for forwarding other events */
     private Consumer<T> forwarder = null;
-    /** List into which all triggered values are recorded (when enabled) */
-    private List<T> history = null;
     private Event<Void> parameterlessEvent = null;
 
     private List<EventExtension<T>> extensions = null;
@@ -55,9 +54,12 @@ public class Event <T> {
             return;
         }
 
+        if(extensions != null)
+            for(int i=extensions.size()-1; i>=0; i--)
+                removeExtension(extensions.get(i));
+
         stopForwards();
         forwarder = null;
-        enableHistory(false);
         modQueue = null;
 
         if(parameterlessEvent != null){
@@ -201,10 +203,6 @@ public class Event <T> {
         if(parameterlessEvent != null)
             parameterlessEvent.trigger(null);
 
-        // record history, if enabled
-        if(history != null)
-            history.add(arg);
-
         // this trigger is done, "uncount" it
         triggerCount--;
 
@@ -305,56 +303,6 @@ public class Event <T> {
      */
     public boolean hasListener(Consumer<T> listener){
         return (listeners != null && listeners.contains(listener));
-    }
-
-    /**
-     * Returns the recorded list of values that have been triggered before
-     * @return List The recorded history of triggered values
-     */
-    public List<T> getHistory(){
-        return history;
-    }
-
-    /** Enables history recording */
-    public void enableHistory(){
-        enableHistory(true);
-    }
-
-    /**
-     * Enables history recording
-     * @param enable When true; enables history recording, otherwise it disables history recording
-     */
-    public void enableHistory(boolean enable){
-        // disable
-        if(!enable){
-            history = null;
-            return;
-        }
-
-        // enable
-        if(history == null)
-            history = new ArrayList<>();
-    }
-
-    /**
-     * Returns true if this event is currently recording it history (false by default)
-     * @return boolean The current history-recording status
-     */
-    public boolean isHistoryEnabled(){
-        return history != null;
-    }
-
-    /**
-     * Runs the given logic for all values that are recorded into the internal history (if enabled)
-     * and also registers the logic like a "normal" listener.
-     * @param func The Listener which should also be invoked for all history values
-     */
-    public void withAllValues(Consumer<T> func){
-        addListener(func);
-        enableHistory(true);
-
-        for(T value : history)
-            func.accept(value);
     }
 
     private void queueMod(Mod mod){
@@ -480,6 +428,7 @@ public class Event <T> {
             }
         }
     }
+
     //
     // OnceListener extension
     //
@@ -500,5 +449,83 @@ public class Event <T> {
      */
     public void addOnceListener(Consumer<T> newListener, Object owner){
         this.enable(new OnceListener(this, newListener, owner));
+    }
+
+    //
+    // EventHistory extensions
+    //
+
+    private EventHistory getHistoryExtension(){
+        if(extensions == null) return null;
+
+        for(int i=0; i<extensions.size(); i++){
+            EventExtension ext = extensions.get(i);
+            if(EventHistory.class.isInstance(ext))
+                return (EventHistory)ext;
+        }
+
+        return null;
+    }
+    /**
+     * Returns the recorded list of values that have been triggered before
+     * @return List The recorded history of triggered values
+     */
+    public List<T> getHistory(){
+        EventHistory ext = getHistoryExtension();
+        return ext == null ? new ArrayList<>() : ext.getValues();
+    }
+
+    /** Enables history recording */
+    public void enableHistory(){
+        enableHistory(true);
+    }
+
+    /**
+     * Enables history recording
+     * @param enable When true; enables history recording, otherwise it disables history recording
+     */
+    public void enableHistory(boolean enable){
+        EventHistory ext = getHistoryExtension();
+
+        // disable
+        if(!enable){
+            if(ext != null)
+                ext.disable();
+
+            return;
+        }
+
+        // enable
+        if(ext == null)
+            this.enable(new EventHistory(this));
+        else
+            ext.enable();
+    }
+
+    /**
+     * Returns true if this event is currently recording it history (false by default)
+     * @return boolean The current history-recording status
+     */
+    public boolean isHistoryEnabled(){
+        EventHistory ext = getHistoryExtension();
+        return ext != null && ext.isEnabled();
+    }
+
+    /**
+     * Runs the given logic for all values that are recorded into the internal history (if enabled)
+     * and also registers the logic like a "normal" listener.
+     * @param func The Listener which should also be invoked for all history values
+     */
+    public void withAllValues(Consumer<T> func){
+        List<T> values = this.getHistory();
+
+        if(values != null){
+            for(int i=0; i<values.size(); i++){
+                T value = values.get(i);
+                func.accept(value);
+            }
+        }
+
+        addListener(func);
     }
 }

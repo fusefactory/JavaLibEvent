@@ -116,10 +116,10 @@ public class EventTest {
 		// create event
 		Event<Integer> e = new Event<>();
 		assertEquals(e.isHistoryEnabled(), false);
-		assertEquals(e.getHistory(), null);
+		assertEquals(e.getHistory().size(), 0);
 		// trigger event; by default it doesn't record a history
 		e.trigger(6);
-		assertEquals(e.getHistory(), null);
+		assertEquals(e.getHistory().size(), 0);
 
 		// enable history
 		e.enableHistory();
@@ -137,7 +137,7 @@ public class EventTest {
 		// disable history, verify cleanup
 		e.enableHistory(false);
 		assertEquals(e.isHistoryEnabled(), false);
-		assertEquals(e.getHistory(), null);
+		assertEquals(e.getHistory().size(), 0);
 	}
 
 	@Test public void withAllValues(){
@@ -149,7 +149,8 @@ public class EventTest {
 
 		// register logic to be ran for each triggered value, this will also enable history recording
 		e.withAllValues((Integer number) -> numbers.add(number));
-		assertEquals(e.isHistoryEnabled(), true);
+		assertEquals(e.isHistoryEnabled(), false);
+		e.enableHistory();
 
 		e.trigger(101);
 		assertEquals((int)numbers.get(0), 101);
