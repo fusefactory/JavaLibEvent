@@ -6,6 +6,7 @@ import java.util.ListIterator;
 import java.util.function.Consumer;
 import com.fuse.utils.extensions.StateExt;
 import com.fuse.utils.extensions.StatePusher;
+import com.fuse.utils.extensions.StateValueRunner;
 
 public class State<T> {
   private boolean bInitialized = false;
@@ -16,8 +17,31 @@ public class State<T> {
   public Event<State<T>> initializedEvent;
 
   public State(){
+    this(null);
+  }
+
+  public State(T initialValue){
     newValueEvent = new Event<>();
     initializedEvent = new Event<>();
+    this.set(initialValue); // will trigger some event, but those have not subscribers yet
+  }
+
+  public void destroy(){
+    this.value = null;
+    this.newValueEvent.destroy();
+    this.initializedEvent.destroy();
+
+    if(this.extensions != null){
+
+      ListIterator it = this.extensions.listIterator();
+      while(it.hasNext()){
+        StateExt<T> ext = (StateExt<T>)it.next();
+        ext.disable();
+        it.remove();
+      }
+
+      this.extensions = null;
+    }
   }
 
   public State<T> set(T value){
@@ -84,5 +108,12 @@ public class State<T> {
         it.remove();
       }
     }
+  }
+
+  public State<T> when(T value, Runnable func){
+    StateValueRunner<T> ext = new StateValueRunner<>(this, value, func);
+    ext.enable();
+    this.addExtension(ext);
+    return this;
   }
 }

@@ -50,4 +50,16 @@ public class StateTest {
     state.set(6.0f);
     assertEquals(log.getHistory().size(), 3);
   }
+
+  @Test public void when(){
+    Event<String> history = new Event<>();
+    history.enableHistory();
+
+    State<Boolean> state = new State<>(true)
+      .when(true, () -> history.trigger("true"))
+      .when(false, () -> history.trigger("false"));
+
+    assertEquals(history.getHistory().get(0), "true");
+    assertEquals(history.getHistory().size(), 1);
+  }
 }
