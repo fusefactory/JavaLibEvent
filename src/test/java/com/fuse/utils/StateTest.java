@@ -62,4 +62,35 @@ public class StateTest {
     assertEquals(history.getHistory().get(0), "true");
     assertEquals(history.getHistory().size(), 1);
   }
+
+  @Test public void reset(){
+    State<Integer> s = new State<Integer>();
+    s.newValueEvent.enableHistory();
+    s.initializedEvent.enableHistory();
+
+    assertEquals(s.isInitialized(), false);
+    assertEquals(s.newValueEvent.getHistory().size(), 0);
+    assertEquals(s.initializedEvent.getHistory().size(), 0);
+
+    s.set(23);
+    assertEquals(s.isInitialized(), true);
+    assertEquals(s.newValueEvent.getHistory().size(), 1);
+    assertEquals(s.initializedEvent.getHistory().size(), 1);
+
+    s.set(25);
+    assertEquals(s.isInitialized(), true);
+    assertEquals(s.newValueEvent.getHistory().size(), 2);
+    assertEquals(s.initializedEvent.getHistory().size(), 1);
+
+    s.reset();
+    assertEquals(s.val(), null);
+    assertEquals(s.isInitialized(), false);
+    assertEquals(s.newValueEvent.getHistory().size(), 2);
+    assertEquals(s.initializedEvent.getHistory().size(), 1);
+
+    s.set(31);
+    assertEquals(s.isInitialized(), true);
+    assertEquals(s.newValueEvent.getHistory().size(), 3);
+    assertEquals(s.initializedEvent.getHistory().size(), 2);
+  }
 }

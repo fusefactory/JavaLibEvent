@@ -71,6 +71,13 @@ public class State<T> {
     return bInitialized;
   }
 
+  public void reset(){
+    this.value = null;
+    this.bInitialized = false;
+  }
+
+  // extensions // // // // //
+
   public State<T> addExtension(StateExt<T> ext){
     if(this.extensions == null)
       this.extensions = new ArrayList<>();
