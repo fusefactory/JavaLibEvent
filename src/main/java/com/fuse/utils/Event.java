@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Iterator;
 import java.util.function.Consumer;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import com.fuse.utils.extensions.EventExtension;
 import com.fuse.utils.extensions.OnceListener;
@@ -26,7 +27,7 @@ public class Event <T> {
     /** Holds the number of _currently active_ trigger operations (more than 1 means recursive triggers) */
     private int triggerCount = 0;
     /** Holds a list of Mod operations to execute after the event finishes all current notifications */
-    private List<Mod> modQueue = null;
+    private ConcurrentLinkedQueue<Mod> modQueue = null;
     /** Holds a list of events that are currently being forwarded by this event */
     private List<Event<T>> forwardEvents = null;
     /** Holds our listener-logic for forwarding other events */
@@ -207,7 +208,7 @@ public class Event <T> {
         triggerCount--;
 
         // no more (recursive) trigger operations active? process mod queue
-        if(!isTriggering())
+        if(!isTriggering() && this.modQueue != null)
             processModQueue();
     }
 
@@ -307,16 +308,16 @@ public class Event <T> {
 
     private void queueMod(Mod mod){
         if(modQueue == null)
-            modQueue = new ArrayList<Mod>();
+            modQueue = new ConcurrentLinkedQueue<Mod>();
         modQueue.add(mod);
     }
 
     private void processModQueue(){
-        if(modQueue == null)
-            return;
-
-        for(int idx=0; idx<modQueue.size(); idx++){
-            Mod m = modQueue.get(idx);
+        while(true) {
+        	Mod m = this.modQueue.poll();
+        	
+        	if(m == null)
+        		return;
 
             if(m.destroy){
                 this.destroy();
@@ -332,10 +333,6 @@ public class Event <T> {
             if(m.removeListenersOwner != null)
                 this.removeListeners(m.removeListenersOwner);
         }
-
-        // clear queue
-        modQueue.clear();
-        modQueue = null;
     }
 
     /**
