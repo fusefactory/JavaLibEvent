@@ -102,6 +102,15 @@ public class State<T> {
     this.addExtension(ext);
   }
 
+  /// convenience method for always pushing this state's values into another state
+  public void push(State<T> target){
+    this.push(target, null);
+  }
+
+  public void push(State<T> target, Object owner){
+    this.push((T val) -> { target.set(val); }, owner);
+  }
+
   public void stopPushes(Object owner){
     if(this.extensions == null)
       return;

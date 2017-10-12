@@ -93,4 +93,18 @@ public class StateTest {
     assertEquals(s.newValueEvent.getHistory().size(), 3);
     assertEquals(s.initializedEvent.getHistory().size(), 2);
   }
+
+  @Test public void push_to_other_state(){
+    State<Integer> s1, s2;
+    s1 = new State<>(1);
+    s2 = new State<>(2);
+    assertEquals((int)s2.get(), 2);
+    s1.push(s2);
+    assertEquals((int)s2.get(), 1);
+    s1.set(3);
+    assertEquals((int)s2.get(), 3);
+    s2.set(4);
+    assertEquals((int)s2.get(), 4);
+    assertEquals((int)s1.get(), 3);
+  }
 }
