@@ -5,6 +5,7 @@ _Java Package that provides the following high-level classes for implementing Ev
 
 * com.fuse.utils.Event
 * com.fuse.utils.Test
+* com.fuse.utils.State
 
 ## Installation
 
@@ -15,8 +16,10 @@ For more info on jitpack see;
 * https://github.com/jitpack/maven-simple
 * https://jitpack.io/docs/?#building-with-jitpack
 
-## JavaDocs
-* https://fusefactory.github.io/JavaLibEvent/site/apidocs/index.html
+## Documentation
+
+* Javadocs: https://fusefactory.github.io/JavaLibEvent/site/apidocs/index.html
+* To run unit tests: ``` mvn test ```
 
 ## Usage: Event class
 
@@ -123,4 +126,62 @@ void operation(CustomObject obj){
 
     // perform operation
 }
+```
+
+## Usage State classes
+
+The state class is basically a 'smart' variable which triggers events when its value changes.
+
+You can use its public ```newValueEvent``` and ```initializedEvent``` attributes directly (see usage of the Event class in the documentation above), but it's often more convenient to use the higher level ```push method``` because it both executes the lambda for the current value (if any) and for all future values (until it is stopped), or the ```when method``` in case something needs to be executed when the state gets a specific value
+
+#### 'push' method
+
+The push method executes for every (current and future) value of the state. This doesn't only save you some coding, but is designed to make it easier to reason about certain code. By registering a state-listener using the push method you basically create a connection between the state instance and whatever needs to happens next, while hiding all the logic that is needed to establish that connection (registering event listeners and checking if the value is initialized).
+
+```java
+    // create an instance; note you have to use objects, primitives like int, string and float (lower-case) are not allowed
+    State<Float> levelState = new State<>();
+
+    // register a listener to be executed for every (future) value of the state instance;
+    levelState.push((Float value) -> {
+
+        // ... do stuff with the value here ...
+        System.out.println("Got value: "+value.toString());
+
+    }, this); // this second param (this) is optional and can be used later to remove the callback
+
+
+    levelState.set(10.0f); // This will print "Got value: 10.0"
+    levelState.set(20.0f); // This will print "Got value: 10.0"
+
+    // register another listener, note that this listener
+    // will also be immediately executed with the current value
+    levelState.push((Float value) -> { this.setSuperImportantAttributeValue(value * 2.0f); }, this);
+
+    // our super important attribute should now have the value 40.0f
+
+    // this will remove both the above listeners
+    levelState.stopPushes(this);
+```
+
+#### 'when' method
+
+To register _value specific listeners_ use the ```when``` method. Just like the push method, this can make the code more readable by hiding all the if/then/else control-flow logic.
+
+```java
+    // initialize a boolean state instance and initialize with the value 'false'
+    State<Boolean> onOffState = new State<>(false);
+    // register separate listeners for the true and for the false values
+    onOffState.when(false, (Boolean value) -> machine.turnOFF());
+    onOffState.when(true, (Boolean value) -> {
+        this.sendMachineStartNotification();
+        machine.turnON()
+    });
+
+    // note that the when method returns the state instance itself, so you can link them
+    State<Integer> score = new State<>(0);
+    score
+        .when(1, (Integer value) -> System.out.println("Your first point!"))
+        .when(7, (Integer value) -> System.out.println("Getting lucky"))
+        .when(21, (Integer value) -> System.out.println("You just won a pingpong match"));
 ```
