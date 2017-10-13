@@ -14,7 +14,7 @@ public class EventTest {
   private Event<String> event;
   private Object owner;
 
-  @Test public void addListener_addOnceListener_trigger_removeListeners(){
+  @Test public void addListener_trigger_removeListeners(){
     event = new Event<String>();
     result = "";
 
@@ -55,16 +55,6 @@ public class EventTest {
     event.trigger("trigger5");
     assertEquals(result, "trigger2 -> trigger4");
 
-    // add "once listener" (listener will auto-remove after first invocation)
-    event.addOnceListener((String value) -> {
-    	result += " # " + value;
-    });
-
-    // trigger twice, only first one the listener is called
-    event.trigger("trigger6");
-    event.trigger("trigger7");
-    assertEquals(result, "trigger2 -> trigger4 # trigger6");
-
     Object owner = this;
     // register listener that tries to modify to event while it's triggering
     event.addListener((String val) -> {
@@ -77,7 +67,7 @@ public class EventTest {
     assertEquals(event.size(), 1);
     event.trigger("trigger8");
     assertEquals(event.size(), 0);
-    assertEquals(result, "trigger2 -> trigger4 # trigger6 _ trigger8 (after add: 1, after remove: 1)");
+    assertEquals(result, "trigger2 -> trigger4 _ trigger8 (after add: 1, after remove: 1)");
   }
 
   @Test public void forward_stopForward(){
@@ -126,10 +116,10 @@ public class EventTest {
 		// create event
 		Event<Integer> e = new Event<>();
 		assertEquals(e.isHistoryEnabled(), false);
-		assertEquals(e.getHistory(), null);
+		assertEquals(e.getHistory().size(), 0);
 		// trigger event; by default it doesn't record a history
 		e.trigger(6);
-		assertEquals(e.getHistory(), null);
+		assertEquals(e.getHistory().size(), 0);
 
 		// enable history
 		e.enableHistory();
@@ -147,7 +137,7 @@ public class EventTest {
 		// disable history, verify cleanup
 		e.enableHistory(false);
 		assertEquals(e.isHistoryEnabled(), false);
-		assertEquals(e.getHistory(), null);
+		assertEquals(e.getHistory().size(), 0);
 	}
 
 	@Test public void withAllValues(){
@@ -159,7 +149,8 @@ public class EventTest {
 
 		// register logic to be ran for each triggered value, this will also enable history recording
 		e.withAllValues((Integer number) -> numbers.add(number));
-		assertEquals(e.isHistoryEnabled(), true);
+		assertEquals(e.isHistoryEnabled(), false);
+		e.enableHistory();
 
 		e.trigger(101);
 		assertEquals((int)numbers.get(0), 101);
@@ -219,6 +210,20 @@ public class EventTest {
 
 		assertEquals(event.size(), 0);
 		assertEquals(forwardSource.size(), 0);
+	}
+
+	@Test public void addOnceListener(){
+		 Event<String> event = new Event<>();
+		 assertEquals(event.size(), 0);
+		 result = "";
+		 event.addOnceListener((String val) -> { result += val; });
+		 assertEquals(event.size(), 1);
+		 assertEquals(result, "");
+		 event.trigger("once");
+		 assertEquals(result, "once");
+		 assertEquals(event.size(), 0);
+		 event.trigger("twice");
+		 assertEquals(result, "once");
 	}
 
 	// @Test public void benchmark(){
