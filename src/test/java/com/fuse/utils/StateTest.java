@@ -107,4 +107,13 @@ public class StateTest {
     assertEquals((int)s2.get(), 4);
     assertEquals((int)s1.get(), 3);
   }
+
+  @Test public void changeEvent(){
+    State<Integer> numberState = new State<>(5);
+    numberState.changeEvent.enableHistory();
+    numberState.set(6);
+    assertEquals((int)numberState.changeEvent.getHistory().get(0).current, 6);
+    assertEquals((int)numberState.changeEvent.getHistory().get(0).previous, 5);
+    assertEquals((int)numberState.changeEvent.getHistory().size(), 1);
+  }
 }

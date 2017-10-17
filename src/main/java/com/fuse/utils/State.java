@@ -9,20 +9,25 @@ import com.fuse.utils.extensions.StatePusher;
 import com.fuse.utils.extensions.StateValueRunner;
 
 public class State<T> {
+
+  class ChangeArgs {
+    public T previous;
+    public T current;
+    public ChangeArgs(T p, T c){ previous = p; current = c; }
+  }
+
   private boolean bInitialized = false;
   private T value = null;
   private List<StateExt<T>> extensions = null;
 
-  public Event<T> newValueEvent;
-  public Event<State<T>> initializedEvent;
+  public Event<T> newValueEvent = new Event<>();
+  public Event<State<T>> initializedEvent = new Event<>();
+  public Event<ChangeArgs> changeEvent = new Event<>();
 
   public State(){
-    this(null);
   }
 
   public State(T initialValue){
-    newValueEvent = new Event<>();
-    initializedEvent = new Event<>();
     this.set(initialValue); // will trigger some event, but those have not subscribers yet
   }
 
@@ -30,6 +35,7 @@ public class State<T> {
     this.value = null;
     this.newValueEvent.destroy();
     this.initializedEvent.destroy();
+    this.changeEvent.destroy();
 
     if(this.extensions != null){
 
@@ -45,7 +51,7 @@ public class State<T> {
   }
 
   public State<T> set(T value){
-    boolean change = this.value == null || !this.value.equals(value);
+    T prevValue = this.value;
     this.value = value;
 
     if(!bInitialized && value != null){
@@ -53,8 +59,10 @@ public class State<T> {
       initializedEvent.trigger(this);
     }
 
-    if(change)
+    if(prevValue == null || !this.value.equals(prevValue)){
       this.newValueEvent.trigger(this.value);
+      this.changeEvent.trigger(new ChangeArgs(prevValue, this.value));
+    }
 
     return this;
   }
