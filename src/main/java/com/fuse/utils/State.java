@@ -59,10 +59,13 @@ public class State<T> {
       initializedEvent.trigger(this);
     }
 
-    if(prevValue == null || !this.value.equals(prevValue)){
+    boolean change =  (this.value != null && !this.value.equals(prevValue)) || this.value == null && prevValue != null;
+
+    if(change && this.value != null)
       this.newValueEvent.trigger(this.value);
+
+    if(change)
       this.changeEvent.trigger(new ChangeArgs(prevValue, this.value));
-    }
 
     return this;
   }

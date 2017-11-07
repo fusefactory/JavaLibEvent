@@ -115,5 +115,15 @@ public class StateTest {
     assertEquals((int)numberState.changeEvent.getHistory().get(0).current, 6);
     assertEquals((int)numberState.changeEvent.getHistory().get(0).previous, 5);
     assertEquals((int)numberState.changeEvent.getHistory().size(), 1);
+    numberState.set(null);
+    assertEquals((int)numberState.changeEvent.getHistory().size(), 2);
+    assertEquals(numberState.changeEvent.getHistory().get(1).current, (Integer)null);
+    assertEquals((int)numberState.changeEvent.getHistory().get(1).previous, 6);
+    numberState.set(null);
+    assertEquals((int)numberState.changeEvent.getHistory().size(), 2); // no change
+    numberState.set(100);
+    assertEquals((int)numberState.changeEvent.getHistory().size(), 3);
+    assertEquals((int)numberState.changeEvent.getHistory().get(2).current, 100);
+    assertEquals(numberState.changeEvent.getHistory().get(2).previous, (Integer)null);
   }
 }
