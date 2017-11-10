@@ -143,4 +143,12 @@ public class State<T> {
     this.addExtension(ext);
     return this;
   }
+
+  public State<T> whenOnce(T value, Runnable func){
+    StateValueRunner<T> ext = new StateValueRunner<>(this, value, func);
+    ext.setOnce();
+    ext.enable();
+    this.addExtension(ext);
+    return this;
+  }
 }

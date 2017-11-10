@@ -126,4 +126,21 @@ public class StateTest {
     assertEquals((int)numberState.changeEvent.getHistory().get(2).current, 100);
     assertEquals(numberState.changeEvent.getHistory().get(2).previous, (Integer)null);
   }
+
+  @Test public void whenOnce(){
+    State<Integer> state = new State<>(5);
+    Event<Integer> history = new Event<>();
+    history.enableHistory();
+    state.whenOnce(5, () -> history.trigger(1));
+    state.set(6);
+    state.set(5);
+    assertEquals(history.getHistory().size(), 1);
+
+    state.whenOnce(8, () -> history.trigger(2));
+    state.set(8);
+    assertEquals(history.getHistory().size(), 2);
+    state.set(9);
+    state.set(8);
+    assertEquals(history.getHistory().size(), 2);
+  }
 }
