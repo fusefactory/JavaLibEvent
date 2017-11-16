@@ -144,6 +144,18 @@ public class State<T> {
     return this;
   }
 
+  public State<T> whenNot(T value, Runnable func){
+    StateValueRunner<T> ext = new StateValueRunner<>(this, value, func, true);
+    ext.enable();
+    this.addExtension(ext);
+    return this;
+  }
+
+  public State<T> whenNot(T value, Consumer<T> func){
+    Runnable wrapper = () -> func.accept(this.val());
+    return this.whenNot(value, wrapper);
+  }
+
   public State<T> whenOnce(T value, Runnable func){
     StateValueRunner<T> ext = new StateValueRunner<>(this, value, func);
     ext.setOnce();

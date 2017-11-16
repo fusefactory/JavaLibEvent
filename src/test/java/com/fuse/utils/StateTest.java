@@ -63,6 +63,21 @@ public class StateTest {
     assertEquals(history.getHistory().size(), 1);
   }
 
+  @Test public void whenNot(){
+    Event<Integer> history = new Event<>();
+    history.enableHistory();
+
+    State<Integer> state = new State<Integer>()
+      // Consumer callback
+      .whenNot(2, (Integer i) -> history.trigger(i))
+      // Runnable callback
+      .whenNot(3, () -> history.trigger(-1));
+
+    assertEquals(history.getHistory().get(0), (Integer)null);
+    assertEquals(history.getHistory().get(1), (Integer)(-1));
+    assertEquals(history.getHistory().size(), 2);
+  }
+
   @Test public void reset(){
     State<Integer> s = new State<Integer>();
     s.newValueEvent.enableHistory();
