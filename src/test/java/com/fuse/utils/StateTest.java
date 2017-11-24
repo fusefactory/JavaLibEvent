@@ -63,6 +63,21 @@ public class StateTest {
     assertEquals(history.getHistory().size(), 1);
   }
 
+  @Test public void whenNot(){
+    Event<Integer> history = new Event<>();
+    history.enableHistory();
+
+    State<Integer> state = new State<Integer>()
+      // Consumer callback
+      .whenNot(2, (Integer i) -> history.trigger(i))
+      // Runnable callback
+      .whenNot(3, () -> history.trigger(-1));
+
+    assertEquals(history.getHistory().get(0), (Integer)null);
+    assertEquals(history.getHistory().get(1), (Integer)(-1));
+    assertEquals(history.getHistory().size(), 2);
+  }
+
   @Test public void reset(){
     State<Integer> s = new State<Integer>();
     s.newValueEvent.enableHistory();
@@ -106,5 +121,41 @@ public class StateTest {
     s2.set(4);
     assertEquals((int)s2.get(), 4);
     assertEquals((int)s1.get(), 3);
+  }
+
+  @Test public void changeEvent(){
+    State<Integer> numberState = new State<>(5);
+    numberState.changeEvent.enableHistory();
+    numberState.set(6);
+    assertEquals((int)numberState.changeEvent.getHistory().get(0).current, 6);
+    assertEquals((int)numberState.changeEvent.getHistory().get(0).previous, 5);
+    assertEquals((int)numberState.changeEvent.getHistory().size(), 1);
+    numberState.set(null);
+    assertEquals((int)numberState.changeEvent.getHistory().size(), 2);
+    assertEquals(numberState.changeEvent.getHistory().get(1).current, (Integer)null);
+    assertEquals((int)numberState.changeEvent.getHistory().get(1).previous, 6);
+    numberState.set(null);
+    assertEquals((int)numberState.changeEvent.getHistory().size(), 2); // no change
+    numberState.set(100);
+    assertEquals((int)numberState.changeEvent.getHistory().size(), 3);
+    assertEquals((int)numberState.changeEvent.getHistory().get(2).current, 100);
+    assertEquals(numberState.changeEvent.getHistory().get(2).previous, (Integer)null);
+  }
+
+  @Test public void whenOnce(){
+    State<Integer> state = new State<>(5);
+    Event<Integer> history = new Event<>();
+    history.enableHistory();
+    state.whenOnce(5, () -> history.trigger(1));
+    state.set(6);
+    state.set(5);
+    assertEquals(history.getHistory().size(), 1);
+
+    state.whenOnce(8, () -> history.trigger(2));
+    state.set(8);
+    assertEquals(history.getHistory().size(), 2);
+    state.set(9);
+    state.set(8);
+    assertEquals(history.getHistory().size(), 2);
   }
 }
