@@ -1,9 +1,10 @@
 package com.fuse.utils;
 
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.ListIterator;
 import java.util.function.Consumer;
+
 import com.fuse.utils.extensions.StateExt;
 import com.fuse.utils.extensions.StatePusher;
 import com.fuse.utils.extensions.StateValueRunner;
@@ -39,7 +40,7 @@ public class State<T> {
 
     if(this.extensions != null){
 
-      ListIterator it = this.extensions.listIterator();
+      ListIterator<StateExt<T>> it = this.extensions.listIterator();
       while(it.hasNext()){
         StateExt<T> ext = (StateExt<T>)it.next();
         ext.disable();
@@ -126,7 +127,7 @@ public class State<T> {
     if(this.extensions == null)
       return;
 
-    ListIterator it = this.extensions.listIterator();
+    ListIterator<StateExt<T>> it = this.extensions.listIterator();
     while(it.hasNext()){
       StateExt<T> ext = (StateExt<T>)it.next();
 

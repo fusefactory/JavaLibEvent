@@ -21,9 +21,9 @@ public class StateValueRunner<T> extends StateExt<T> {
     this.setIsNegative(negative);
   }
 
-  public StateValueRunner setMaxTimes(Integer times){ this.maxTimes = times; return this; }
+  public StateValueRunner<T> setMaxTimes(Integer times){ this.maxTimes = times; return this; }
 
-  public StateValueRunner setOnce(){ return this.setMaxTimes(1); }
+  public StateValueRunner<T> setOnce(){ return this.setMaxTimes(1); }
 
   @Override protected void setup(){
     this.state.newValueEvent.addListener((T val) -> { this.check(val); }, this);
@@ -34,7 +34,7 @@ public class StateValueRunner<T> extends StateExt<T> {
     this.state.newValueEvent.removeListeners(this);
   }
 
-  public StateValueRunner setIsNegative(boolean negative){ this.bNegative = negative; return this; }
+  public StateValueRunner<T> setIsNegative(boolean negative){ this.bNegative = negative; return this; }
   public boolean isNegative(){ return this.bNegative; }
 
   private void check(T val){

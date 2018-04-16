@@ -1,6 +1,7 @@
 package com.fuse.utils.extensions;
 
 import java.util.function.Consumer;
+
 import com.fuse.utils.Event;
 
 public class OnceListener<T> extends EventExtension<T> {

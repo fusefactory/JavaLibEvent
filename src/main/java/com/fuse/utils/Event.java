@@ -1,17 +1,15 @@
 package com.fuse.utils;
 
-import java.util.Set;
-import java.util.Map;
-import java.util.IdentityHashMap;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Iterator;
-import java.util.function.Consumer;
+import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.Consumer;
 
 import com.fuse.utils.extensions.EventExtension;
-import com.fuse.utils.extensions.OnceListener;
 import com.fuse.utils.extensions.EventHistory;
+import com.fuse.utils.extensions.OnceListener;
 
 /**
 * @author Mark van de Korput
@@ -445,20 +443,20 @@ public class Event <T> {
      * @param owner owner of the new listener
      */
     public void addOnceListener(Consumer<T> newListener, Object owner){
-        this.enable(new OnceListener(this, newListener, owner));
+        this.enable(new OnceListener<T>(this, newListener, owner));
     }
 
     //
     // EventHistory extensions
     //
 
-    private EventHistory getHistoryExtension(){
+    private EventHistory<T> getHistoryExtension(){
         if(extensions == null) return null;
 
         for(int i=0; i<extensions.size(); i++){
-            EventExtension ext = extensions.get(i);
+            EventExtension<T> ext = extensions.get(i);
             if(EventHistory.class.isInstance(ext))
-                return (EventHistory)ext;
+                return (EventHistory<T>)ext;
         }
 
         return null;
@@ -468,7 +466,7 @@ public class Event <T> {
      * @return List The recorded history of triggered values
      */
     public List<T> getHistory(){
-        EventHistory ext = getHistoryExtension();
+        EventHistory<T> ext = getHistoryExtension();
         return ext == null ? new ArrayList<>() : ext.getValues();
     }
 
@@ -482,7 +480,7 @@ public class Event <T> {
      * @param enable When true; enables history recording, otherwise it disables history recording
      */
     public void enableHistory(boolean enable){
-        EventHistory ext = getHistoryExtension();
+        EventHistory<T> ext = getHistoryExtension();
 
         // disable
         if(!enable){
@@ -494,7 +492,7 @@ public class Event <T> {
 
         // enable
         if(ext == null)
-            this.enable(new EventHistory(this));
+            this.enable(new EventHistory<T>(this));
         else
             ext.enable();
     }
@@ -504,7 +502,7 @@ public class Event <T> {
      * @return boolean The current history-recording status
      */
     public boolean isHistoryEnabled(){
-        EventHistory ext = getHistoryExtension();
+        EventHistory<T> ext = getHistoryExtension();
         return ext != null && ext.isEnabled();
     }
 

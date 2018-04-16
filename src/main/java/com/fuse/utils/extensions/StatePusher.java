@@ -1,6 +1,7 @@
 package com.fuse.utils.extensions;
 
 import java.util.function.Consumer;
+
 import com.fuse.utils.State;
 
 public class StatePusher<T> extends StateExt<T> {
