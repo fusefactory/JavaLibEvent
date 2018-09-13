@@ -131,6 +131,10 @@ public class Event <T> {
      * @param listener reference to the actual listener that should be removed
      */
     public void removeListener(Consumer<T> listener){
+        // fetch local instances to avoid race-condition errors
+        List<Consumer<T>> listeners = this.listeners;
+        Map<Consumer<T>, Object> owners = this.owners;
+
         if(owners == null || listeners == null)
             return; // nothing to remove
 
@@ -144,12 +148,12 @@ public class Event <T> {
 
         if(listeners.remove(listener)){
             if(listeners.isEmpty())
-                listeners = null;
+                this.listeners = null;
 
             if(owners != null){
                 if(owners.remove(listener) != null)
                     if(owners.isEmpty())
-                        owners = null;
+                        this.owners = null;
             }
         }
     }
@@ -163,6 +167,9 @@ public class Event <T> {
      * @param owner owner of the listeners that should be removed
      */
     public void removeListeners(Object owner){
+        // fetch local instance to avoid race-condition errors  
+        Map<Consumer<T>, Object> owners = this.owners;
+
         if(owners == null)
             return;
 
@@ -174,6 +181,8 @@ public class Event <T> {
             return;
         }
 
+        // fetch local instance to avoid race-condition errors
+        List<Consumer<T>> listeners = this.listeners;
         if(listeners != null){
             for(int idx=listeners.size()-1; idx>=0; idx--){
                 Consumer<T> listener = listeners.get(idx);
@@ -192,6 +201,9 @@ public class Event <T> {
         // count the number of (recursive) triggers; locks this event from modifications
         triggerCount++;
 
+        // fetch local instance to avoid race-condition errors
+        List<Consumer<T>> listeners = this.listeners;
+
         if(listeners != null){
             for(int idx=0; idx<listeners.size(); idx++){
                 listeners.get(idx).accept(arg);
@@ -199,8 +211,9 @@ public class Event <T> {
         }
 
         // also trigger "whenTriggered" callbacks without parameters
-        if(parameterlessEvent != null)
-            parameterlessEvent.trigger(null);
+        Event<Void> evt = this.parameterlessEvent; // local instance to safeguard against race-conditions
+        if(evt != null)
+            evt.trigger(null);
 
         // this trigger is done, "uncount" it
         triggerCount--;
