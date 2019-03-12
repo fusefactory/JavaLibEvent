@@ -33,6 +33,7 @@ public class Event <T> {
     private Event<Void> parameterlessEvent = null;
 
     private List<EventExtension<T>> extensions = null;
+    private final Object listenersLock = new Object();
 
     private class Mod {
         public Consumer<T> addListener;
@@ -109,11 +110,14 @@ public class Event <T> {
             return;
         }
 
-        // lazy initializing
-        if(listeners == null)
-            listeners = new ArrayList<>();
 
-        listeners.add(newListener);
+        // lazy initializing
+        List<Consumer<T>> list = this.listeners == null ? new ArrayList<>() : this.listeners;
+        list.add(newListener);
+
+        synchronized(this.listenersLock) {
+            this.listeners = list;
+        }
 
         // create owner collection if necessary
         if(owners == null)
@@ -146,14 +150,16 @@ public class Event <T> {
             return;
         }
 
-        if(listeners.remove(listener)){
-            if(listeners.isEmpty())
-                this.listeners = null;
+        synchronized(this.listenersLock) {
+            if(listeners.remove(listener)){
+                if(listeners.isEmpty())
+                    this.listeners = null;
 
-            if(owners != null){
-                if(owners.remove(listener) != null)
-                    if(owners.isEmpty())
-                        this.owners = null;
+                if(owners != null){
+                    if(owners.remove(listener) != null)
+                        if(owners.isEmpty())
+                            this.owners = null;
+                }
             }
         }
     }
@@ -206,8 +212,12 @@ public class Event <T> {
 
         if(listeners != null){
             for(int idx=0; idx<listeners.size(); idx++){
-                Consumer<T> func = listeners.get(idx);
-                if (func != null) func.accept(arg);
+                synchronized(this.listenersLock) {
+                  if (idx < listeners.size()) {
+                      Consumer<T> func = listeners.get(idx);
+                      if (func != null) func.accept(arg);
+                  }
+                }
             }
         }
 
