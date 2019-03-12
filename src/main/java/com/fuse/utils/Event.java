@@ -167,7 +167,7 @@ public class Event <T> {
      * @param owner owner of the listeners that should be removed
      */
     public void removeListeners(Object owner){
-        // fetch local instance to avoid race-condition errors  
+        // fetch local instance to avoid race-condition errors
         Map<Consumer<T>, Object> owners = this.owners;
 
         if(owners == null)
@@ -206,7 +206,8 @@ public class Event <T> {
 
         if(listeners != null){
             for(int idx=0; idx<listeners.size(); idx++){
-                listeners.get(idx).accept(arg);
+                Consumer<T> func = listeners.get(idx);
+                if (func != null) func.accept(arg);
             }
         }
 
@@ -326,7 +327,7 @@ public class Event <T> {
     private void processModQueue(){
         while(true) {
         	Mod m = this.modQueue.poll();
-        	
+
         	if(m == null)
         		return;
 

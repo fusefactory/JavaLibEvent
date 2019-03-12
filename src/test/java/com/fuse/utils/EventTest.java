@@ -3,9 +3,12 @@ package com.fuse.utils;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.function.Consumer;
+import java.time.LocalDateTime;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
 import org.junit.Test;
 
 public class EventTest {
@@ -226,6 +229,43 @@ public class EventTest {
 		 assertEquals(result, "once");
 	}
 
+  @Test public void raceConditionStressTest() {
+    event = new Event<>();
+
+    final LocalDateTime endTime = LocalDateTime.now().plusSeconds(3);
+    Thread thread1 = new Thread(() -> {
+      Consumer<String> handler = null;
+      final String log = new String();
+
+      while(LocalDateTime.now().isBefore(endTime)) {
+        if (handler == null) {
+          handler = (s) -> { log.concat(s+"\n"); };
+          this.event.addListener(handler);
+        } else {
+          this.event.removeListener(handler);
+          handler = null;
+        }
+      }
+    });
+
+    Thread thread2 = new Thread(() -> {
+      int count = 0;
+      while(LocalDateTime.now().isBefore(endTime)) {
+        this.event.trigger("thread2-"+Integer.toString(count));
+        count += 1;
+      }
+    });
+
+    thread1.start();
+    thread2.start();
+
+    try {
+      thread1.join();
+      thread2.join();
+    } catch(Exception e) {
+      fail(e.toString());
+    }
+  }
 	// @Test public void benchmark(){
 	// 	Event<String> root = new Event<>();
 	// 	Event<String> nest1 = new Event<>();
