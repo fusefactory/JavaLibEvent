@@ -3,7 +3,6 @@ package com.fuse.utils;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.function.Consumer;
-import java.time.LocalDateTime;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -69,8 +68,8 @@ public class EventTest {
 
     assertEquals(event.size(), 1);
     event.trigger("trigger8");
-    assertEquals(event.size(), 0);
     assertEquals(result, "trigger2 -> trigger4 _ trigger8 (after add: 1, after remove: 1)");
+    assertEquals(event.size(), 0);
   }
 
   @Test public void forward_stopForward(){
@@ -188,8 +187,8 @@ public class EventTest {
 		assertEquals(event.size(), 0);
 		event.addListener((String val) -> {});
 		event.whenTriggered(() -> {});
-		event.forward(forwardSource);
-		assertEquals(event.size(), 1);
+		event.forward(forwardSource); // event forwards forwardSource
+		assertEquals(event.size(), 2);
 		assertEquals(forwardSource.size(), 1);
 		event.destroy();
 		assertEquals(event.size(), 0);
@@ -229,15 +228,15 @@ public class EventTest {
 		 assertEquals(result, "once");
 	}
 
-  @Test public void raceConditionStressTest() {
+  @Test public void raceConditionsTwoThreadsStressTest() {
     event = new Event<>();
 
-    final LocalDateTime endTime = LocalDateTime.now().plusSeconds(3);
+    long endTime = System.currentTimeMillis() + 5000;
     Thread thread1 = new Thread(() -> {
       Consumer<String> handler = null;
       final String log = new String();
 
-      while(LocalDateTime.now().isBefore(endTime)) {
+      while(System.currentTimeMillis() < endTime) {
         if (handler == null) {
           handler = (s) -> { log.concat(s+"\n"); };
           this.event.addListener(handler);
@@ -246,14 +245,18 @@ public class EventTest {
           handler = null;
         }
       }
+
+      System.out.println("thread1 ending");
     });
 
     Thread thread2 = new Thread(() -> {
       int count = 0;
-      while(LocalDateTime.now().isBefore(endTime)) {
+      while(System.currentTimeMillis() < endTime) {
         this.event.trigger("thread2-"+Integer.toString(count));
         count += 1;
       }
+
+      System.out.println("thread2 ending");
     });
 
     thread1.start();
@@ -261,9 +264,100 @@ public class EventTest {
 
     try {
       thread1.join();
+      System.out.println("thread1 joined");
       thread2.join();
+      System.out.println("thread2 joined");
     } catch(Exception e) {
+      System.out.println("exception: "+e.toString());
       fail(e.toString());
+    }
+  }
+
+  @Test public void raceConditionsFourThreadsStressTest() {
+    try {
+    event = new Event<>();
+
+    long endTime = System.currentTimeMillis() + 5000;
+    Thread thread1 = new Thread(() -> {
+      Consumer<String> handler = null;
+      final String log = new String();
+
+      while(System.currentTimeMillis() < endTime) {
+        if (handler == null) {
+          handler = (s) -> {
+            log.concat(s+"\n");
+            this.event.whenTriggered(() -> {}, this.event);
+          };
+
+          this.event.addListener(handler);
+          this.event.stopWhenTriggeredCallbacks(this.event);
+        } else {
+          this.event.removeListener(handler);
+          handler = null;
+        }
+      }
+
+      System.out.println("thread1 ending");
+    });
+
+    Thread thread2 = new Thread(() -> {
+      int count = 0;
+      while(System.currentTimeMillis() < endTime) {
+        this.event.trigger("thread2-"+Integer.toString(count));
+        count += 1;
+      }
+
+      System.out.println("thread2 ending");
+    });
+
+    Thread thread3 = new Thread(() -> {
+      Consumer<String> handler = null;
+      final String log = new String();
+
+      while(System.currentTimeMillis() < endTime) {
+        this.event.addOnceListener((String s) -> {
+          log.concat(s+"\n");
+        });
+      }
+
+      System.out.println("thread1 ending");
+    });
+
+    Thread thread4 = new Thread(() -> {
+      int count = 0;
+      while(System.currentTimeMillis() < endTime) {
+        this.event.trigger("thread4-"+Integer.toString(count));
+        count += 1;
+        this.event.trigger("thread4-"+Integer.toString(count));
+        count += 1;
+      }
+
+      System.out.println("thread4 ending");
+    });
+
+    thread1.start();
+    thread2.start();
+    thread3.start();
+    thread4.start();
+
+    try {
+      thread1.join();
+      System.out.println("thread1 joined");
+      thread2.join();
+      System.out.println("thread2 joined");
+      thread3.join();
+      System.out.println("thread3 joined");
+      thread4.join();
+      System.out.println("thread4 joined");
+
+    } catch(Exception e) {
+      System.out.println("exception: "+e.toString());
+      fail(e.toString());
+    }
+
+    } catch(java.lang.IndexOutOfBoundsException bexc) {
+      System.out.println(this.event.debugInfo());
+      // throw bexc;
     }
   }
 	// @Test public void benchmark(){
