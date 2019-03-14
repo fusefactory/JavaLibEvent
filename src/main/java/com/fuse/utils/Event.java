@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.LinkedList;
 import java.util.function.Consumer;
+import java.util.concurrent.CopyOnWriteArrayList;
 //import java.util.concurrent.locks.ReentrantLock;
 
 import com.fuse.utils.extensions.EventExtension;
@@ -28,11 +29,10 @@ public class Event <T> {
     private Map<Consumer<T>, Object> owners = null;
     /** Holds the number of _currently active_ trigger operations (more than 1 means recursive triggers) */
     private int triggerCount = 0;
+    private int activeModifiersCount = 0;
     private Queue<Runnable> modOpsQueue; // mods to be executed when modification is possible
-    private Queue<Consumer<Consumer<T>[]>> postModOpsQueue; // triggers to be executed after modification ends
-
+    private Queue<Consumer<List<Consumer<T>>>> postModOpsQueue; // triggers to be executed after modification ends
     private List<EventExtension<T>> extensions = null;
-    private final Object listenersLock = new Object();
 
     public void destroy(){
         this.modify(() -> {
@@ -69,25 +69,6 @@ public class Event <T> {
         addListener(newListener, null);
     }
 
-    private void freeze(Consumer<Consumer<T>[]> func) {
-        if (hasActiveModifiers()) {
-            if (this.postModOpsQueue == null) this.postModOpsQueue = new LinkedList<>();
-            this.postModOpsQueue.add(func);
-            return;
-        }
-
-        triggerCount++;
-        // func.run()
-        if (this.listeners != null) {
-            Consumer<T>[] ar = this.listeners.toArray(new Consumer[0]);
-            func.accept(ar);
-        }
-
-        // this trigger is done, "uncount" it
-        triggerCount--;
-        doEndModBlocker();
-    }
-
     private boolean isFrozen() {
         return triggerCount > 0;
     }
@@ -96,21 +77,53 @@ public class Event <T> {
         return !(this.isFrozen() || this.hasActiveModifiers());
     }
 
-    private int activeModifiersCount = 0;
     private boolean hasActiveModifiers() { return this.activeModifiersCount > 0; }
 
-    private void modify(Runnable func) {
-        if(canModify()) {
-            activeModifiersCount += 1;
-            func.run();
-            activeModifiersCount -= 1;
-            doEndModifications();
-            doEndModBlocker();
+    private void runFrozen(Runnable r, Runnable otherwiseR) {
+        triggerCount++; // freeze
+        if (this.activeModifiersCount > 0) {
+            triggerCount--;
+            otherwiseR.run();
             return;
         }
 
-        if (modOpsQueue == null) modOpsQueue = new LinkedList<>();
-        modOpsQueue.add(func);
+        r.run();
+        triggerCount--;
+        doEndModBlocker();
+    }
+
+    private void runModder(Runnable r, Runnable otherwiseR) {
+        activeModifiersCount++;
+        if (triggerCount > 0 || activeModifiersCount > 1) {
+            activeModifiersCount--;
+            otherwiseR.run();
+            return;
+        }
+
+        r.run();
+        activeModifiersCount--;
+        doEndModifications();
+        doEndModBlocker();
+    }
+
+    private void freeze(Consumer<List<Consumer<T>>> func) {
+        this.runFrozen(() -> {
+            if (this.listeners != null) {
+                List<Consumer<T>> ar = this.getAllListeners();
+                func.accept(ar);
+            }
+        // couldn't freeze; already modifying, queue operation
+        }, () -> {
+            if (this.postModOpsQueue == null) this.postModOpsQueue = new LinkedList<>();
+            this.postModOpsQueue.add(func);
+        });
+    }
+
+    private void modify(Runnable func) {
+        this.runModder(func, () -> {
+            if (modOpsQueue == null) modOpsQueue = new LinkedList<>();
+            modOpsQueue.add(func);
+        });
     }
 
     /// Checks if there are queued post-block operations and executes them if there ar no other blocks left
@@ -129,7 +142,7 @@ public class Event <T> {
     private void doEndModifications() {
         if (this.postModOpsQueue != null && !hasActiveModifiers() && this.postModOpsQueue.size() > 0) {
             while (true) {
-                Consumer<Consumer<T>[]> r = this.postModOpsQueue.poll();
+                Consumer<List<Consumer<T>>> r = this.postModOpsQueue.poll();
                 if(r == null) return;
                 this.freeze(r);
             }
@@ -148,45 +161,13 @@ public class Event <T> {
     public void addListener(Consumer<T> newListener, Object owner){
         this.modify(() -> {
             // lazy initializing
-            if (this.listeners == null) this.listeners = new ArrayList<>();
-            // List<Consumer<T>> list = this.listeners == null ? new ArrayList<>() : this.listeners;
+            if (this.listeners == null) this.listeners = new CopyOnWriteArrayList<>();
             this.listeners.add(newListener);
 
-            // synchronized(this.listenersLock) {
-            //     this.listeners = list;
-            // }
-
             // create owner collection if necessary
-            if(owners == null)
-                owners = new IdentityHashMap<>();
-
+            if(owners == null) owners = new IdentityHashMap<>();
             owners.put(newListener, owner);
         });
-
-        // // queue operation if locked
-        // if(isTriggering()){
-        //     Mod m = new Mod();
-        //     m.addListener = newListener;
-        //     m.addOwner = owner;
-        //     queueMod(m);
-        //     return;
-        // }
-        //
-        //
-        // // lazy initializing
-        // if (this.listeners == null) this.listeners = new ArrayList<>();
-        // // List<Consumer<T>> list = this.listeners == null ? new ArrayList<>() : this.listeners;
-        // this.listeners.add(newListener);
-        //
-        // // synchronized(this.listenersLock) {
-        // //     this.listeners = list;
-        // // }
-        //
-        // // create owner collection if necessary
-        // if(owners == null)
-        //     owners = new IdentityHashMap<>();
-        //
-        // owners.put(newListener, owner);
     }
 
     /**
@@ -203,22 +184,13 @@ public class Event <T> {
             List<Consumer<T>> listeners = this.listeners;
             Map<Consumer<T>, Object> owners = this.owners;
 
-            if(owners == null || listeners == null)
-                return; // nothing to remove
+            if(owners == null || listeners == null) return; // nothing to remove
 
-            // synchronized(this.listenersLock) {
-                if(listeners.remove(listener)){
-                    // if(listeners.isEmpty())
-                    //    this.listeners = null;
-
-                    if(owners != null){
-                        owners.remove(listener);
-                        // if(owners.remove(listener) != null)
-                        //     if(owners.isEmpty())
-                        //         this.owners = null;
-                    }
+            if(listeners.remove(listener)){
+                if(owners != null){
+                    owners.remove(listener);
                 }
-            // }
+            }
         });
     }
 
@@ -271,17 +243,7 @@ public class Event <T> {
      */
     public void trigger(T arg) {
         this.freeze((frozenListeners) -> {
-            // fetch local instance to avoid race-condition errors
-            // List<Consumer<T>> listeners = this.listeners;
-
-            if(listeners != null){
-                for(int idx=0; idx<frozenListeners.length; idx++){
-                    // synchronized(this.listenersLock) {
-                    Consumer<T> func = frozenListeners[idx];
-                    if (func != null) func.accept(arg);
-                    // }
-                }
-            }
+            for(Consumer<T> c : frozenListeners) c.accept(arg);
         });
     }
 
