@@ -4,12 +4,17 @@ import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.Queue;
+import java.util.LinkedList;
 import java.util.function.Consumer;
+import java.util.concurrent.CopyOnWriteArrayList;
+//import java.util.concurrent.locks.ReentrantLock;
 
 import com.fuse.utils.extensions.EventExtension;
 import com.fuse.utils.extensions.EventHistory;
 import com.fuse.utils.extensions.OnceListener;
+import com.fuse.utils.extensions.ListenerGroupExt;
+import com.fuse.utils.extensions.ForwardExt;
 
 /**
 * @author Mark van de Korput
@@ -24,58 +29,32 @@ public class Event <T> {
     private Map<Consumer<T>, Object> owners = null;
     /** Holds the number of _currently active_ trigger operations (more than 1 means recursive triggers) */
     private int triggerCount = 0;
-    /** Holds a list of Mod operations to execute after the event finishes all current notifications */
-    private ConcurrentLinkedQueue<Mod> modQueue = null;
-    /** Holds a list of events that are currently being forwarded by this event */
-    private List<Event<T>> forwardEvents = null;
-    /** Holds our listener-logic for forwarding other events */
-    private Consumer<T> forwarder = null;
-    private Event<Void> parameterlessEvent = null;
-
+    private int activeModifiersCount = 0;
+    private Queue<Runnable> modOpsQueue; // mods to be executed when modification is possible
+    private Queue<Consumer<List<Consumer<T>>>> postModOpsQueue; // triggers to be executed after modification ends
     private List<EventExtension<T>> extensions = null;
 
-    private class Mod {
-        public Consumer<T> addListener;
-        public Object addOwner;
-        public Consumer<T> removeListener;
-        public Object removeListenersOwner;
-        public boolean destroy = false;
-    };
-
-    // public Event() {
-    // }
-
     public void destroy(){
-        if(isTriggering()){
-            Mod m = new Mod();
-            m.destroy = true;
-            queueMod(m);
-            return;
-        }
+        this.modify(() -> {
 
-        if(extensions != null)
-            for(int i=extensions.size()-1; i>=0; i--)
-                removeExtension(extensions.get(i));
+            if(extensions != null)
+                for(int i=extensions.size()-1; i>=0; i--) {
+                    EventExtension<T> ext = extensions.get(i);
+                    ext.disable();
+                    removeExtension(ext);
+                }
 
-        stopForwards();
-        forwarder = null;
-        modQueue = null;
+            // brute-force these removals
+            if(listeners != null){
+                listeners.clear();
+                listeners = null;
+            }
 
-        if(parameterlessEvent != null){
-            parameterlessEvent.destroy();
-            parameterlessEvent = null;
-        }
-
-        // brute-force these removals
-        if(listeners != null){
-            listeners.clear();
-            listeners = null;
-        }
-
-        if(owners != null){
-            owners.clear();
-            owners = null;
-        }
+            if(owners != null){
+                owners.clear();
+                owners = null;
+            }
+        });
     }
 
     /**
@@ -90,6 +69,86 @@ public class Event <T> {
         addListener(newListener, null);
     }
 
+    private boolean isFrozen() {
+        return triggerCount > 0;
+    }
+
+    private boolean canModify() {
+        return !(this.isFrozen() || this.hasActiveModifiers());
+    }
+
+    private boolean hasActiveModifiers() { return this.activeModifiersCount > 0; }
+
+    private void runFrozen(Runnable r, Runnable otherwiseR) {
+        triggerCount++; // freeze
+        if (this.activeModifiersCount > 0) {
+            triggerCount--;
+            otherwiseR.run();
+            return;
+        }
+
+        r.run();
+        triggerCount--;
+        doEndModBlocker();
+    }
+
+    private void runModder(Runnable r, Runnable otherwiseR) {
+        activeModifiersCount++;
+        if (triggerCount > 0 || activeModifiersCount > 1) {
+            activeModifiersCount--;
+            otherwiseR.run();
+            return;
+        }
+
+        r.run();
+        activeModifiersCount--;
+        doEndModifications();
+        doEndModBlocker();
+    }
+
+    private void freeze(Consumer<List<Consumer<T>>> func) {
+        this.runFrozen(() -> {
+            if (this.listeners != null) {
+                List<Consumer<T>> ar = this.getAllListeners();
+                func.accept(ar);
+            }
+        // couldn't freeze; already modifying, queue operation
+        }, () -> {
+            if (this.postModOpsQueue == null) this.postModOpsQueue = new LinkedList<>();
+            this.postModOpsQueue.add(func);
+        });
+    }
+
+    private void modify(Runnable func) {
+        this.runModder(func, () -> {
+            if (modOpsQueue == null) modOpsQueue = new LinkedList<>();
+            modOpsQueue.add(func);
+        });
+    }
+
+    /// Checks if there are queued post-block operations and executes them if there ar no other blocks left
+    private void doEndModBlocker() {
+        if (this.modOpsQueue != null && canModify() && this.modOpsQueue.size() > 0) {
+            // this.modify(() -> {
+                while (true) {
+                    Runnable r = this.modOpsQueue.poll();
+                    if(r == null) return;
+                    this.modify(r); //.run();
+                }
+            // });
+        }
+    }
+
+    private void doEndModifications() {
+        if (this.postModOpsQueue != null && !hasActiveModifiers() && this.postModOpsQueue.size() > 0) {
+            while (true) {
+                Consumer<List<Consumer<T>>> r = this.postModOpsQueue.poll();
+                if(r == null) return;
+                this.freeze(r);
+            }
+        }
+    }
+
     /**
      * Register a new listener.
      * If this event is currently triggering (thus iterating over its listeners)
@@ -100,26 +159,15 @@ public class Event <T> {
      * @param owner owner of the new listener
      */
     public void addListener(Consumer<T> newListener, Object owner){
-        // queue operation if locked
-        if(isTriggering()){
-            Mod m = new Mod();
-            m.addListener = newListener;
-            m.addOwner = owner;
-            queueMod(m);
-            return;
-        }
+        this.modify(() -> {
+            // lazy initializing
+            if (this.listeners == null) this.listeners = new CopyOnWriteArrayList<>();
+            this.listeners.add(newListener);
 
-        // lazy initializing
-        if(listeners == null)
-            listeners = new ArrayList<>();
-
-        listeners.add(newListener);
-
-        // create owner collection if necessary
-        if(owners == null)
-            owners = new IdentityHashMap<>();
-
-        owners.put(newListener, owner);
+            // create owner collection if necessary
+            if(owners == null) owners = new IdentityHashMap<>();
+            owners.put(newListener, owner);
+        });
     }
 
     /**
@@ -131,31 +179,19 @@ public class Event <T> {
      * @param listener reference to the actual listener that should be removed
      */
     public void removeListener(Consumer<T> listener){
-        // fetch local instances to avoid race-condition errors
-        List<Consumer<T>> listeners = this.listeners;
-        Map<Consumer<T>, Object> owners = this.owners;
+        this.modify(() -> {
+            // fetch local instances to avoid race-condition errors
+            List<Consumer<T>> listeners = this.listeners;
+            Map<Consumer<T>, Object> owners = this.owners;
 
-        if(owners == null || listeners == null)
-            return; // nothing to remove
+            if(owners == null || listeners == null) return; // nothing to remove
 
-        // queue operation if locked
-        if(isTriggering()){
-            Mod m = new Mod();
-            m.removeListener = listener;
-            queueMod(m);
-            return;
-        }
-
-        if(listeners.remove(listener)){
-            if(listeners.isEmpty())
-                this.listeners = null;
-
-            if(owners != null){
-                if(owners.remove(listener) != null)
-                    if(owners.isEmpty())
-                        this.owners = null;
+            if(listeners.remove(listener)){
+                if(owners != null){
+                    owners.remove(listener);
+                }
             }
-        }
+        });
     }
 
     /**
@@ -167,29 +203,37 @@ public class Event <T> {
      * @param owner owner of the listeners that should be removed
      */
     public void removeListeners(Object owner){
+        this.modify(() -> {
+            List<Consumer<T>> ls = getOwnerListeners(owner);
+            for(Consumer<T> l : ls) {
+                removeListener(l);
+            }
+        });
+    }
+
+    public final List<Consumer<T>> getAllListeners() {
+        return this.listeners;
+    }
+
+    public List<Consumer<T>> getOwnerListeners(Object owner) {
+        List<Consumer<T>> ls = new ArrayList<Consumer<T>>();
+
         // fetch local instance to avoid race-condition errors
         Map<Consumer<T>, Object> owners = this.owners;
 
         if(owners == null)
-            return;
-
-        // queue operation if locked
-        if(isTriggering()){
-            Mod m = new Mod();
-            m.removeListenersOwner = owner;
-            queueMod(m);
-            return;
-        }
+        return ls;
 
         // fetch local instance to avoid race-condition errors
         List<Consumer<T>> listeners = this.listeners;
-        if(listeners != null){
-            for(int idx=listeners.size()-1; idx>=0; idx--){
-                Consumer<T> listener = listeners.get(idx);
-                if(owners.get(listener) == owner)
-                    removeListener(listener);
-            }
+        if(listeners == null) return ls;
+        for(int idx=listeners.size()-1; idx>=0; idx--){
+            Consumer<T> listener = listeners.get(idx);
+            if(owners.get(listener) == owner)
+                ls.add(listener);
         }
+
+        return ls;
     }
 
     /**
@@ -197,31 +241,10 @@ public class Event <T> {
      *
      * @param arg the payload to give to all listeners
      */
-    public void trigger(T arg){
-        // count the number of (recursive) triggers; locks this event from modifications
-        triggerCount++;
-
-        // fetch local instance to avoid race-condition errors
-        List<Consumer<T>> listeners = this.listeners;
-
-        if(listeners != null){
-            for(int idx=0; idx<listeners.size(); idx++){
-                Consumer<T> func = listeners.get(idx);
-                if (func != null) func.accept(arg);
-            }
-        }
-
-        // also trigger "whenTriggered" callbacks without parameters
-        Event<Void> evt = this.parameterlessEvent; // local instance to safeguard against race-conditions
-        if(evt != null)
-            evt.trigger(null);
-
-        // this trigger is done, "uncount" it
-        triggerCount--;
-
-        // no more (recursive) trigger operations active? process mod queue
-        if(!isTriggering() && this.modQueue != null)
-            processModQueue();
+    public void trigger(T arg) {
+        this.freeze((frozenListeners) -> {
+            for(Consumer<T> c : frozenListeners) c.accept(arg);
+        });
     }
 
     /**
@@ -240,12 +263,25 @@ public class Event <T> {
      * @return int
      */
     public int size(){
-        int counter=0;
+      return this.listeners == null ? 0 : listeners.size();
+    }
 
-        if(listeners != null)
-            counter += listeners.size();
 
-        return counter;
+    private ForwardExt<T> getForwardExt(){
+        // find existing
+        if(extensions != null) {
+            for(int i=0; i<extensions.size(); i++){
+                EventExtension<T> ext = extensions.get(i);
+                if(ForwardExt.class.isInstance(ext)) {
+                    ForwardExt<T> lext = (ForwardExt<T>)ext;
+                    return lext;
+                }
+            }
+        }
+
+        ForwardExt<T> lext = new ForwardExt<T>(this);
+        this.enable(lext);
+        return lext;
     }
 
     /**
@@ -255,34 +291,14 @@ public class Event <T> {
      * @param other source event who's notifications to forward to our own listeners
      */
     public void forward(Event<T> other){
-        // we lazily initialize the forwarded (instead of in the constructor),
-        // so it doesn't take up any memory in events that don't use it (which is most events)
-        if(forwarder == null){
-            forwarder = (T value) -> {
-                this.trigger(value);
-            };
-        }
-
-        if(forwardEvents == null){
-            forwardEvents = new ArrayList<Event<T>>();
-        }
-
-        forwardEvents.add(other);
-        other.addListener(this.forwarder, forwarder);
+        this.getForwardExt().add(other);
     }
 
     /**
      * Stop forwarding all events that were being forwarded using .forward();
      */
     public void stopForwards(){
-        if(forwardEvents == null)
-            return;
-
-        // note; stopForward will set forwardEvents to null if it becomes empty
-        while(forwardEvents != null && !forwardEvents.isEmpty())
-            stopForward(forwardEvents.get(0));
-
-        forwardEvents = null;
+        this.getForwardExt().removeAll();
     }
 
     /**
@@ -290,15 +306,7 @@ public class Event <T> {
      * @param other source event to stop forwarding
      */
     public void stopForward(Event<T> other){
-        other.removeListener(this.forwarder);
-
-        if(forwardEvents == null)
-            return;
-
-        forwardEvents.remove(other);
-
-        if(forwardEvents.isEmpty())
-            forwardEvents = null;
+        this.getForwardExt().remove(other);
     }
 
     /**
@@ -318,33 +326,26 @@ public class Event <T> {
         return (listeners != null && listeners.contains(listener));
     }
 
-    private void queueMod(Mod mod){
-        if(modQueue == null)
-            modQueue = new ConcurrentLinkedQueue<Mod>();
-        modQueue.add(mod);
-    }
 
-    private void processModQueue(){
-        while(true) {
-        	Mod m = this.modQueue.poll();
 
-        	if(m == null)
-        		return;
+    private ListenerGroupExt<T> getArglessListenerGroupExtension(){
+        String groupId = "ArglessListeners";
 
-            if(m.destroy){
-                this.destroy();
-                return;
+        // find existing
+        if(extensions != null) {
+            for(int i=0; i<extensions.size(); i++){
+                EventExtension<T> ext = extensions.get(i);
+                if(ListenerGroupExt.class.isInstance(ext)) {
+                    ListenerGroupExt<T> lext = (ListenerGroupExt<T>)ext;
+                    if (lext.getGroupId().equals(groupId));
+                        return lext;
+                }
             }
-
-            if(m.addListener != null)
-                this.addListener(m.addListener, m.addOwner);
-
-            if(m.removeListener != null)
-                this.removeListener(m.removeListener);
-
-            if(m.removeListenersOwner != null)
-                this.removeListeners(m.removeListenersOwner);
         }
+
+        ListenerGroupExt<T> lext = new ListenerGroupExt<T>(this, groupId);
+        this.enable(lext);
+        return lext;
     }
 
     /**
@@ -352,7 +353,9 @@ public class Event <T> {
      * @param func The ownerless callback
      */
     public void whenTriggered(Runnable func){
-        whenTriggered(func, null);
+      this.getArglessListenerGroupExtension().addListener(
+        (T arg) -> func.run(),
+        null);
     }
 
     /**
@@ -363,33 +366,19 @@ public class Event <T> {
      * @param owner The owner by which this listener can be removed using stopWhenTriggeredCallbacks
      */
     public void whenTriggered(Runnable func, Object owner){
-        if(parameterlessEvent == null)
-            parameterlessEvent = new Event<>();
-
-        parameterlessEvent.addListener((Void voi) -> {
-            func.run();
-        }, owner);
+        this.getArglessListenerGroupExtension().addListener(
+          (T arg) -> func.run(),
+          owner);
     }
 
     /** Removes all callbacks registered using the whenTriggered methods */
     public void stopWhenTriggeredCallbacks(){
-        if(parameterlessEvent != null){
-            parameterlessEvent.destroy();
-            parameterlessEvent = null;
-        }
+        this.getArglessListenerGroupExtension().stopListeners();
     }
 
     /** Removes all callbacks registered using the whenTriggered for this specific owner */
     public void stopWhenTriggeredCallbacks(Object owner){
-        if(parameterlessEvent == null)
-            return; // nothing to remove
-
-        parameterlessEvent.removeListeners(owner);
-
-        if(parameterlessEvent.size() == 0){
-            parameterlessEvent.destroy();
-            parameterlessEvent = null; // cleanup if possible
-        }
+        this.getArglessListenerGroupExtension().stopListeners(owner);
     }
 
     //
@@ -423,6 +412,7 @@ public class Event <T> {
         ext.enable();
     }
 
+
     private void removeDoneExtensions(){
         if(this.extensions == null)
             return;
@@ -430,6 +420,7 @@ public class Event <T> {
         for(int i=extensions.size()-1; i>=0; i--){
             EventExtension<T> ext = extensions.get(i);
             if(ext.isDone()){
+                ext.disable();
                 removeExtension(ext);
                 // removeExtension sets extensions to null when it's empty
                 if(extensions == null)
@@ -536,5 +527,9 @@ public class Event <T> {
         }
 
         addListener(func);
+    }
+
+    public String debugInfo() {
+      return "EVENT DEBUG INFO:\ntriggerCount: "+Integer.toString(this.triggerCount)+"\nModQueue count: "+Integer.toString(this.modOpsQueue.size());
     }
 }
